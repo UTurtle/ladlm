@@ -1,0 +1,25 @@
+# Ignore all datasets and checkpoints
+datasets/
+checkpoints/
+checkpoint-30/
+
+# Ignore model and output directories
+meta-llama-ocrvqa/
+meta-llama-ocrvqa_v2/
+lora_model/
+outputs/
+
+# Ignore cache
+*_cache
+
+*.log
+*.tmp
+*.swp
+*.safetensors
+.DS_Store
+Thumbs.db
+
+# Ignore Python-related temporary and compiled files
+__pycache__/
+*.py[cod]
+*.ipynb_checkpoints
