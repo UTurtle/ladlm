@@ -52,8 +52,8 @@ def generate_prompt_response(explanation, generated_text):
         return ""
 
 # 기존 엑셀 파일 로드
-input_excel = f"{TRANING_OUTDIR}_evaluation_results.xlsx"
-output_excel = f"{TRANING_OUTDIR}_evaluation_results_with_prompt.xlsx"
+input_excel = f"{TRANING_OUTDIR}_compare_table.xlsx"
+output_excel = f"{TRANING_OUTDIR}_compare_table_with_prompt.xlsx"
 
 wb = load_workbook(input_excel)
 ws = wb.active
