@@ -14,7 +14,7 @@
 ### How to set data format?
 
 should make two program
-- `ladlm_extract_json_to_dataset.py` : for json to dataset
+- `ladlm_extract_json_to_dataset.py` : for json to dataset (prototype)
 - `ladlm_dataset.py` : for dataset fit to mllama model (refer this: `ocrvqa_dataset.py`)
 
 - Json
@@ -24,22 +24,38 @@ should make two program
         - other infomations (if need)           -> input (skip)
         - Explanation about spectrogram: str    -> output
 
-to
+```python
+Dataset({
+    features: ['file_path', 'file_name', 'linear_spectrogram_with_axes', 'linear_spectrogram_no_axes', 'float_features', 'domain', 'type', 'machineType', 'explanation_about_spectrogram', 'audio'],
+    num_rows: 302
+})
+```
 
 ```python
-image = sample['images'][0].convert("RGB")
-dialog = sample['texts']
+file_name = sample['file_name']
+
+linear_spectrogram_with_axes_image = sample['linear_spectrogram_with_axes']['image'].convert("RGB")
+linear_spectrogram_no_axes_image = sample['linear_spectrogram_no_axes']['image'].convert("RGB")
+
+librosa_parameters = sample['linear_spectrogram_no_axes']['librosa_parameters']
+plot_parameters = sample['linear_spectrogram_no_axes']['plot_parameters']
+
+domain = sample['domain']              
+type = sample['type']                  
+machineType = sample['machineType']    
+explanation_about_spectrogram = sample['explanation_about_spectrogram']
+
 
 dialogs = [
     [
         {"role": "user", "content": [
             {"type": "image"},
             {"type": "text", 
-                "text": f"This is an image extracted using the Short-Time Fourier Transform (STFT) with librosa. The parameters used to extract this image are as follows: {dialog["librosa_feature_parameter"]}.\n {dialog["user_prompt"]}:"
+                "text": f"This is an image extracted using the Short-Time Fourier Transform (STFT) with librosa. The parameters used to extract this image are as follows: {librosa_parameters}. plot parameters: {plot_parameters}.\n Explanation about spectrogram:"
             }
         ]},
         {"role" : "assistant" , "content":[
-            {"type": "text", "text": dialog["explanation_about_spectrogram"]} 
+            {"type": "text", "text": explanation_about_spectrogram} 
         ]}
     ]
 ]
@@ -49,19 +65,30 @@ dialogs = [
 
 ```python
 ### Training data
-image = sample['images'][0].convert("RGB")
-dialog = sample['texts']
+file_name = sample['file_name']
+
+linear_spectrogram_with_axes_image = sample['linear_spectrogram_with_axes']['image'].convert("RGB")
+linear_spectrogram_no_axes_image = sample['linear_spectrogram_no_axes']['image'].convert("RGB")
+
+librosa_parameters = sample['linear_spectrogram_no_axes']['librosa_parameters']
+plot_parameters = sample['linear_spectrogram_no_axes']['plot_parameters']
+
+domain = sample['domain']              
+type = sample['type']                  
+machineType = sample['machineType']    
+explanation_about_spectrogram = sample['explanation_about_spectrogram']
+
 
 dialogs = [
     [
         {"role": "user", "content": [
             {"type": "image"},
             {"type": "text", 
-                "text": f"This is an image extracted using the Short-Time Fourier Transform (STFT) with librosa. The parameters used to extract this image are as follows: {dialog["librosa_feature_parameter"]}.\n {dialog["user_prompt"]}:"
+                "text": f"This is an image extracted using the Short-Time Fourier Transform (STFT) with librosa. The parameters used to extract this image are as follows: {librosa_parameters}. plot parameters: {plot_parameters}.\n Explanation about spectrogram:"
             }
         ]},
         {"role" : "assistant" , "content":[
-            {"type": "text", "text": dialog["explanation_about_spectrogram"]} 
+            {"type": "text", "text": explanation_about_spectrogram} 
         ]}
     ]
 ]
@@ -93,14 +120,29 @@ batch = {
 ### Inference
 
 ```python
-image = sample['images'][0].convert("RGB")  # if select first image.
-dialog = sample['texts']
+file_name = sample['file_name']
 
-messages = [
-    {"role": "user", "content": [
-        {"type": "image"},
-        {"type": "text", "text": f"This is an image extracted using the Short-Time Fourier Transform (STFT) with librosa. The parameters used to extract this image are as follows: {dialog["feature_parameter"]}.\n {dialog["user_prompt"]}:"}
-    ]}
+linear_spectrogram_with_axes_image = sample['linear_spectrogram_with_axes']['image'].convert("RGB")
+linear_spectrogram_no_axes_image = sample['linear_spectrogram_no_axes']['image'].convert("RGB")
+
+librosa_parameters = sample['linear_spectrogram_no_axes']['librosa_parameters']
+plot_parameters = sample['linear_spectrogram_no_axes']['plot_parameters']
+
+domain = sample['domain']              
+type = sample['type']                  
+machineType = sample['machineType']    
+explanation_about_spectrogram = sample['explanation_about_spectrogram']
+
+
+dialogs = [
+    [
+        {"role": "user", "content": [
+            {"type": "image"},
+            {"type": "text", 
+                "text": f"This is an image extracted using the Short-Time Fourier Transform (STFT) with librosa. The parameters used to extract this image are as follows: {librosa_parameters}. plot parameters: {plot_parameters}.\n Explanation about spectrogram:"
+            }
+        ]}
+    ]
 ]
 
 inputs = processor(

@@ -50,7 +50,11 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
             - image input format: (`224x224` ~ `512x512` but it's good?)
     - [ x ] discussion input dataset.
     - [ x ] Make big feature json [anomaly feature json](https://github.com/UTurtle/anomaly/blob/main/eda/extract_feature_code/audio_features.json)
-    - [ ] make script `ladlm_dataset.py` extracting from json. referencing `ocrvqa_dataset.py`.
+    - [ x ] make script `ladlm_dataset.py` extracting from json. referencing `ocrvqa_dataset.py`.
+    - [ ] re-script llama_recpe peft notebook for ladlm_dataset
+    - [ ] evaluation first peft
+      - [ ] human evaluation
+      - [ ] gpt4o mini evaluation
 
 
 - __PEFT Large Anomaly Detection Language Model__ 
