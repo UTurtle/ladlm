@@ -1,7 +1,10 @@
 # Ignore all datasets and checkpoints
 datasets/
+unziped/
 checkpoints/
 checkpoint-30/
+dev/
+eval_2024/
 
 # Ignore model and output directories
 meta-llama-ocrvqa/
