@@ -64,8 +64,10 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
    - [ ] scripting spectrogram_stft_maker
      - [x] Add horizon and vertical sprite pattern maker
      - [ ] Add noise maker
-     - [ ] Add introduce nose
+     - [ ] Add introduce noise
+       - [ ] get real world noise
      - [ ] Add eda-explain-text template
+     - [ ] Add shape noise
 
 
 - __PEFT Large Anomaly Detection Language Model__ 
