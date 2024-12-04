@@ -38,23 +38,34 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
         - task : ocr-image
         - we using peft: 16vram is not enough for vision llm.
           - QLoRA is good solution for fine-tuning for 16g vram
-        - [ x ] using unsloth
-        - [ x ] using llama_recipe
+        - [x] using unsloth
+        - [x]  using llama_recipe
 
 
   - __dataset preprocessing for Llama 3.2 11B Vision Model PEFT__
-    - [ x ] learn Llama 3.2 11B Vision Model input format.
-    - [ x ] Make big feature json [anomaly feature json](https://github.com/UTurtle/anomaly/blob/main/eda/
-    - [ x ] learn ChartQA vison input format for best training enviroment!
+    - [x] learn Llama 3.2 11B Vision Model input format.
+    - [x] Make big feature json [anomaly feature json](https://github.com/UTurtle/anomaly/blob/main/eda/
+    - [x] learn ChartQA vison input format for best training enviroment!
         - [ChartQA](https://arxiv.org/abs/2203.10244)
             - image input format: (`224x224` ~ `512x512` but it's good?)
-    - [ x ] discussion input dataset.
-    - [ x ] Make big feature json [anomaly feature json](https://github.com/UTurtle/anomaly/blob/main/eda/extract_feature_code/audio_features.json)
-    - [ x ] make script `ladlm_dataset.py` extracting from json. referencing `ocrvqa_dataset.py`.
-    - [ ] re-script llama_recpe peft notebook for ladlm_dataset
-    - [ ] evaluation first peft
+    - [x] discussion input dataset.
+    - [x] Make big feature json [anomaly feature json](https://github.com/UTurtle/anomaly/blob/main/eda/extract_feature_code/audio_features.json)
+    - [x] make script `ladlm_dataset.py` extracting from json. referencing `ocrvqa_dataset.py`.
+
+
+- __Try Llama 3.2 11B Vision Model PEFT using dataset ladlm__
+    - [x] re-script llama_recpe peft notebook for ladlm_dataset
+    - [x] evaluation first peft
       - [ ] human evaluation
-      - [ ] gpt4o mini evaluation
+      - [x] gpt4o mini evaluation
+
+
+ - __Augmentation spectrogram:eda-explain-text pair data automation__
+   - [ ] scripting spectrogram_stft_maker
+     - [x] Add horizon and vertical sprite pattern maker
+     - [ ] Add noise maker
+     - [ ] Add introduce nose
+     - [ ] Add eda-explain-text template
 
 
 - __PEFT Large Anomaly Detection Language Model__ 
