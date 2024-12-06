@@ -67,9 +67,6 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
        - [x] gaussian noise 
        - [x] linear noise
        - [x] others..
-     - [ ] Add introduce noise
-       - [ ] get real world noise (add wav or mp3 file to merge augmentationed audio)
-     - [ ] Add eda-explain-text template
      - [ ] Add shape noise (can select)
        - [ ] a circle noise 
        - [ ] a trapezoid
@@ -77,9 +74,34 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
        - [ ] a pillar
        - [ ] a rectangle
        - [ ] an ellipse
-       - [ ] a star
+       - [ ] a hill
+       - [ ] a fog
        - [ ] a polygon (can selected vertex)
        - [ ] a wave pattern
+       - [ ] get real world noise (add wav or mp3 file to merge) 
+     - [ ] Add shape noise (can select)
+       - [ ] pattern 
+         - [ ] linear (time axes or frequency)
+         - [ ] random 
+         - [ ] n time linear t time sleep (n번 일정하다가 t초 쉬는)
+         - [ ] convex  
+         - [ ] function ()
+       - [ ] type (it can be has parameter)
+         - [ ] a circle noise 
+         - [ ] a trapezoid
+         - [ ] a spike
+         - [ ] a pillar
+         - [ ] a rectangle
+         - [ ] an ellipse
+         - [ ] a hill
+         - [ ] a fog
+         - [ ] a polygon (can selected vertex)
+         - [ ] a wave pattern
+         - [ ] get real world noise (add wav or mp3 file to merge 
+       -augmentationed audio)
+
+  
+     - [ ] Add eda-explain-text template
 
 
 
