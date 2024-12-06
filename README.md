@@ -63,11 +63,24 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
  - __Augmentation spectrogram:eda-explain-text pair data automation__
    - [ ] scripting spectrogram_stft_maker
      - [x] Add horizon and vertical sprite pattern maker
-     - [ ] Add noise maker
+     - [x] Add noise whole audio (can select)
+       - [x] gaussian noise 
+       - [x] linear noise
+       - [x] others..
      - [ ] Add introduce noise
-       - [ ] get real world noise
+       - [ ] get real world noise (add wav or mp3 file to merge augmentationed audio)
      - [ ] Add eda-explain-text template
-     - [ ] Add shape noise
+     - [ ] Add shape noise (can select)
+       - [ ] a circle noise 
+       - [ ] a trapezoid
+       - [ ] a spike
+       - [ ] a pillar
+       - [ ] a rectangle
+       - [ ] an ellipse
+       - [ ] a star
+       - [ ] a polygon (can selected vertex)
+       - [ ] a wave pattern
+
 
 
 - __PEFT Large Anomaly Detection Language Model__ 
