@@ -1,0 +1,151 @@
+{
+    "file_path": "output/audio/automated_audio_000000001.wav",
+    "file_name": "automated_audio_000000001.wav",
+    "linear_spectrogram_with_axes": "output/linear_spectrogram_with_axes/automated_linear_spectrogram_with_axes_000000001.png",
+    "linear_spectrogram_no_axes": "output/linear_spectrogram_no_axes/automated_linear_spectrogram_no_axes_000000001.png",
+    "spectrogram_base": {
+        "sample_rate": 16000,
+        "n_fft": 1024,
+        "hop_length": 512,
+        "noise_strength": 14.040899270537114,
+        "noise_type": "uniform",
+        "noise_params": {
+            "low": -1.0,
+            "high": 1.0
+        }
+    },
+    "shapes": [
+        {
+            "type": "HorizontalSpikeDBShape",
+            "parameters": {
+                "center_freq": 2294.4449356347313,
+                "center_time": 2.6020228352701387,
+                "radius_freq": 21.267537026026677,
+                "radius_time": 0.46490059299149245,
+                "strength_dB": 31.67857505436063
+            }
+        },
+        {
+            "type": "HorizontalLineDBShape",
+            "parameters": {
+                "center_freq": 4881.032926720828,
+                "strength_dB": 28.670370036263222,
+                "thickness": 2
+            }
+        },
+        {
+            "type": "HorizontalLineDBShape",
+            "parameters": {
+                "center_freq": 4586.8308444363865,
+                "strength_dB": 22.523288767414687,
+                "thickness": 3
+            }
+        },
+        {
+            "type": "HorizontalRangeDistributionDBShape",
+            "parameters": {
+                "freq_min": 1609.6492426005148,
+                "freq_max": 1609.8492426005146,
+                "strength_dB": 20.841677019144512,
+                "distribution": "gaussian",
+                "distribution_params": {
+                    "sigma": 1072.240185607099
+                }
+            }
+        },
+        {
+            "type": "VerticalLineDBShape",
+            "parameters": {
+                "center_time": 4.886341679813233,
+                "strength_dB": 30.78719883726574,
+                "thickness": 3
+            }
+        },
+        {
+            "type": "VerticalLineDBShape",
+            "parameters": {
+                "center_time": 5.711926195024838,
+                "strength_dB": 36.34039814061762,
+                "thickness": 3
+            }
+        },
+        {
+            "type": "VerticalRangeDistributionDBShape",
+            "parameters": {
+                "time_min": 1.4148384829495373,
+                "time_max": 7.575389165749752,
+                "strength_dB": 30.222568870833186,
+                "distribution": "gaussian",
+                "distribution_params": {
+                    "sigma": 1.4317059890824595
+                }
+            }
+        },
+        {
+            "type": "HorizontalLineDBShape",
+            "parameters": {
+                "center_freq": 6545.530707196526,
+                "strength_dB": 36.14022454698955,
+                "thickness": 2
+            }
+        },
+        {
+            "type": "HorizontalSpikeDBShape",
+            "parameters": {
+                "center_freq": 4220.1380621835115,
+                "center_time": 5.590136424949283,
+                "radius_freq": 15.503027996197389,
+                "radius_time": 0.6749146792698578,
+                "strength_dB": 32.91557512920183
+            }
+        },
+        {
+            "type": "HorizontalLineDBShape",
+            "parameters": {
+                "center_freq": 1354.8780645843547,
+                "strength_dB": 22.2059634350206,
+                "thickness": 1
+            }
+        }
+    ],
+    "patterns": [
+        {
+            "type": "NLinearRepeatTSleepPattern",
+            "parameters": {
+                "shape_name": "horizontal_spike",
+                "shape_params": {
+                    "strength_dB": 32.16468637334178,
+                    "center_freq": 606.9170800021768,
+                    "center_time": 8.971529424019472,
+                    "radius_freq": 20.009813716404587,
+                    "radius_time": 0.41964443003278945
+                },
+                "repeat": 3,
+                "repeat_time": 0.5,
+                "repeat_hz": 500.0,
+                "sleep_time": 1.0,
+                "start_time": 0.0,
+                "direction": "freq"
+            }
+        },
+        {
+            "type": "NLinearRepeatTSleepPattern",
+            "parameters": {
+                "shape_name": "horizontal_spike",
+                "shape_params": {
+                    "strength_dB": 21.370121088078456,
+                    "center_freq": 4134.714119280619,
+                    "center_time": 1.8353684362505458,
+                    "radius_freq": 25.95336283152087,
+                    "radius_time": 0.9473720988246187
+                },
+                "repeat": 3,
+                "repeat_time": 0.5,
+                "repeat_hz": 500.0,
+                "sleep_time": 1.0,
+                "start_time": 0.0,
+                "direction": "freq"
+            }
+        }
+    ]
+}
