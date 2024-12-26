@@ -69,12 +69,12 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
        - [x] others..
      - [x] Add shape noise (can select)
      - [x] Add eda-explain-text template
-     - [ ] Automation spectrogram generator (we say this system augmentation? I don't know :D)
+     - [ ] Automation spectrogram generator 
        - [x] Make automation data pipeline sample
-       - [ ] Refactor ipynb to py (split class and function for readable)
+       - [ ] Refactor ipynb to py
        - [ ] to create more Generalization data (Lack of detail)
        - [ ] make for level system for Scheduling Data
-     - [ ] Training Data
+     - [ ] Training 
 
 
 - __PEFT Large Anomaly Detection Language Model__ 
