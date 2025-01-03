@@ -7,104 +7,120 @@
         "sample_rate": 16000,
         "n_fft": 1024,
         "hop_length": 512,
-        "noise_strength": 14.040899270537114,
-        "noise_type": "uniform",
+        "noise_strength": 11.966274389807499,
+        "noise_type": "normal",
         "noise_params": {
-            "low": -1.0,
-            "high": 1.0
+            "mean": 0.0,
+            "std": 1.0
         }
     },
     "shapes": [
         {
-            "type": "HorizontalSpikeDBShape",
+            "type": "VerticalSpikeDBShape",
             "parameters": {
-                "center_freq": 2294.4449356347313,
-                "center_time": 2.6020228352701387,
-                "radius_freq": 21.267537026026677,
-                "radius_time": 0.46490059299149245,
-                "strength_dB": 31.67857505436063
-            }
-        },
-        {
-            "type": "HorizontalLineDBShape",
-            "parameters": {
-                "center_freq": 4881.032926720828,
-                "strength_dB": 28.670370036263222,
-                "thickness": 2
-            }
-        },
-        {
-            "type": "HorizontalLineDBShape",
-            "parameters": {
-                "center_freq": 4586.8308444363865,
-                "strength_dB": 22.523288767414687,
-                "thickness": 3
+                "center_freq": 4.373227345105315,
+                "center_time": 6.662174051187442,
+                "radius_freq": 1211.1930026713997,
+                "radius_time": 0.547280408684916,
+                "strength_dB": 37.91574250409984
             }
         },
         {
             "type": "HorizontalRangeDistributionDBShape",
             "parameters": {
-                "freq_min": 1609.6492426005148,
-                "freq_max": 1609.8492426005146,
-                "strength_dB": 20.841677019144512,
+                "freq_min": 1660.9685376405635,
+                "freq_max": 1661.1685376405633,
+                "strength_dB": 36.85460647551977,
                 "distribution": "gaussian",
                 "distribution_params": {
-                    "sigma": 1072.240185607099
+                    "sigma": 1045.923999546508
                 }
             }
         },
         {
             "type": "VerticalLineDBShape",
             "parameters": {
-                "center_time": 4.886341679813233,
-                "strength_dB": 30.78719883726574,
-                "thickness": 3
-            }
-        },
-        {
-            "type": "VerticalLineDBShape",
-            "parameters": {
-                "center_time": 5.711926195024838,
-                "strength_dB": 36.34039814061762,
-                "thickness": 3
+                "center_time": 8.198241561365334,
+                "strength_dB": 35.25546639854611,
+                "thickness": 2
             }
         },
         {
             "type": "VerticalRangeDistributionDBShape",
             "parameters": {
-                "time_min": 1.4148384829495373,
-                "time_max": 7.575389165749752,
-                "strength_dB": 30.222568870833186,
+                "time_min": 2.6774485808946595,
+                "time_max": 7.912614127786611,
+                "strength_dB": 26.87278297923881,
                 "distribution": "gaussian",
                 "distribution_params": {
-                    "sigma": 1.4317059890824595
+                    "sigma": 1.391384562693268
                 }
             }
         },
         {
-            "type": "HorizontalLineDBShape",
+            "type": "VerticalSpikeDBShape",
             "parameters": {
-                "center_freq": 6545.530707196526,
-                "strength_dB": 36.14022454698955,
-                "thickness": 2
+                "center_freq": 3.207281902808126,
+                "center_time": 2.3516729820303257,
+                "radius_freq": 3301.4510091487027,
+                "radius_time": 0.1392501414483146,
+                "strength_dB": 39.98263186959004
+            }
+        },
+        {
+            "type": "HorizontalRangeDistributionDBShape",
+            "parameters": {
+                "freq_min": 2123.6510299445345,
+                "freq_max": 2123.8510299445343,
+                "strength_dB": 22.945186646246786,
+                "distribution": "gaussian",
+                "distribution_params": {
+                    "sigma": 1004.3355980539511
+                }
             }
         },
         {
             "type": "HorizontalSpikeDBShape",
             "parameters": {
-                "center_freq": 4220.1380621835115,
-                "center_time": 5.590136424949283,
-                "radius_freq": 15.503027996197389,
-                "radius_time": 0.6749146792698578,
-                "strength_dB": 32.91557512920183
+                "center_freq": 6808.8503506852985,
+                "center_time": 10.228406065343012,
+                "radius_freq": 96.46813728803,
+                "radius_time": 0.3870223676764799,
+                "strength_dB": 33.264466509883434
             }
         },
         {
-            "type": "HorizontalLineDBShape",
+            "type": "HorizontalRangeDistributionDBShape",
             "parameters": {
-                "center_freq": 1354.8780645843547,
-                "strength_dB": 22.2059634350206,
-                "thickness": 1
+                "freq_min": 2579.4763370222922,
+                "freq_max": 2579.676337022292,
+                "strength_dB": 26.993483935911136,
+                "distribution": "gaussian",
+                "distribution_params": {
+                    "sigma": 1055.4509858013573
+                }
+            }
+        },
+        {
+            "type": "HorizontalRangeDistributionDBShape",
+            "parameters": {
+                "freq_min": 2769.7076089723855,
+                "freq_max": 2769.9076089723853,
+                "strength_dB": 22.418692169264382,
+                "distribution": "gaussian",
+                "distribution_params": {
+                    "sigma": 1022.4957736828762
+                }
+            }
+        },
+        {
+            "type": "HorizontalSpikeDBShape",
+            "parameters": {
+                "center_freq": 3927.5412675615826,
+                "center_time": 7.569637979099289,
+                "radius_freq": 68.2201918395649,
+                "radius_time": 0.6026374159441285,
+                "strength_dB": 23.355008285080274
             }
         }
     ],
@@ -112,39 +128,39 @@
         {
             "type": "NLinearRepeatTSleepPattern",
             "parameters": {
-                "shape_name": "horizontal_spike",
+                "shape_name": "vertical_spike",
                 "shape_params": {
-                    "strength_dB": 32.16468637334178,
-                    "center_freq": 606.9170800021768,
-                    "center_time": 8.971529424019472,
-                    "radius_freq": 20.009813716404587,
-                    "radius_time": 0.41964443003278945
+                    "strength_dB": 21.316280427044163,
+                    "center_freq": 2.430689853052564,
+                    "center_time": 5.087419426346199,
+                    "radius_freq": 1297.297070006065,
+                    "radius_time": 0.09270332210805592
                 },
                 "repeat": 3,
                 "repeat_time": 0.5,
                 "repeat_hz": 500.0,
                 "sleep_time": 1.0,
                 "start_time": 0.0,
-                "direction": "freq"
+                "direction": "time"
             }
         },
         {
             "type": "NLinearRepeatTSleepPattern",
             "parameters": {
-                "shape_name": "horizontal_spike",
+                "shape_name": "vertical_spike",
                 "shape_params": {
-                    "strength_dB": 21.370121088078456,
-                    "center_freq": 4134.714119280619,
-                    "center_time": 1.8353684362505458,
-                    "radius_freq": 25.95336283152087,
-                    "radius_time": 0.9473720988246187
+                    "strength_dB": 21.540587588510213,
+                    "center_freq": 5.631441788441587,
+                    "center_time": 10.773288480680598,
+                    "radius_freq": 3547.205052434013,
+                    "radius_time": 1.0336876398276835
                 },
                 "repeat": 3,
                 "repeat_time": 0.5,
                 "repeat_hz": 500.0,
                 "sleep_time": 1.0,
                 "start_time": 0.0,
-                "direction": "freq"
+                "direction": "time"
             }
         }
     ]
