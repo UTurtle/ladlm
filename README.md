@@ -9,11 +9,12 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
 
 ---
 
-### How to start
+### How to setting
 
 1. make new python enviroment(or conda) `conda create -n ladlm python=3.11 -y`
-2. set your new enviroment and `pip install torch transformers datasets`
-3. `python run.py`. this is run all baseline(dataset->preprocessing->peft->test)
+2. set your new enviroment `conda activate ladlm`
+3. `conda install -y pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia`
+4. `pip install transformers datasets`
 
 ---
 
@@ -71,10 +72,12 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
      - [x] Add eda-explain-text template
      - [ ] Automation spectrogram generator 
        - [x] Make automation data pipeline sample
-       - [ ] Refactor ipynb to py
+       - [x] Refactor ipynb to py
        - [ ] to create more Generalization data (Lack of detail)
-       - [ ] make for level system for Scheduling Data
-     - [ ] Training 
+       - [ ] make for level system for Scheduling Data (just show complex level!)
+       - [ ] condense json for secure resources
+     - [ ] Make Dataset 
+     - [ ] PEFT
 
 
 - __PEFT Large Anomaly Detection Language Model__ 
