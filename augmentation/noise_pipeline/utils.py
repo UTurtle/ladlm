@@ -2,22 +2,74 @@
 
 import random
 import numpy as np
+import logging
 
+from noise_pipeline.noise_pipeline import NoisePipeline 
+from noise_pipeline import ShapeFactory, PatternFactory
+
+from noise_pipeline.constants import DEFAULT_SHAPES, DEFAULT_PATTERNS
+
+# Initialize logger for this module
+logger = logging.getLogger(__name__)
+
+def calculate_complexity_level(shapes, patterns):
+    """
+    Calculate the complexity level based on the number of unique shapes and patterns.
+    
+    Levels:
+    1. 1 shape, 0 patterns
+    2. 2 shapes, 1 pattern
+    3. 3 shapes, 2 patterns
+    4. 4 shapes, 3 patterns
+    5. 5+ shapes, 4+ patterns
+    """
+    unique_shapes = set([shape.__class__.__name__ for shape in shapes])
+    num_shapes = len(unique_shapes)
+    num_patterns = len(patterns)
+    
+    logger.debug(f"Calculating complexity level: {num_shapes} unique shapes, {num_patterns} patterns.")
+    
+    if num_shapes >= 5 or num_patterns >= 4:
+        level = 5
+    elif num_shapes == 4 or num_patterns == 3:
+        level = 4
+    elif num_shapes == 3 or num_patterns == 2:
+        level = 3
+    elif num_shapes == 2 or num_patterns == 1:
+        level = 2
+    else:
+        level = 1
+    
+    logger.info(f"Determined complexity level: {level}")
+    return level
 
 def pick_item_from_ratio(ratio_dict):
+    """
+    Picks an item from the ratio_dict based on the weights.
+    
+    Parameters:
+    - ratio_dict (dict): Dictionary with items as keys and their corresponding weights as values.
+    
+    Returns:
+    - selected_item: The chosen item based on the defined weights.
+    """
+    logger.debug(f"Picking item from ratio_dict: {ratio_dict}")
     items = list(ratio_dict.keys())
     weights = list(ratio_dict.values())
     total = sum(weights)
     if total == 0:
+        logger.error("Total weight is zero in pick_item_from_ratio.")
         raise ValueError("Total weight cannot be zero.")
     r = random.uniform(0, total)
     s = 0
     for item, w in zip(items, weights):
         s += w
         if r <= s:
+            logger.debug(f"Selected item: {item} with weight: {w}")
             return item
-    return items[-1]
-
+    selected_item = items[-1]
+    logger.debug(f"Selected last item by default: {selected_item}")
+    return selected_item
 
 def generate_shape_params(
     shape_name,
@@ -34,6 +86,8 @@ def generate_shape_params(
     Generates all parameters randomly based on the shape_name.
     Clamps time and frequency values within their specified boundaries.
     """
+    logger.debug(f"Generating shape parameters for shape: {shape_name}")
+
     params = {
         "strength_dB": random.uniform(min_db_power, max_db_power)
     }
@@ -243,9 +297,10 @@ def generate_shape_params(
             "radius_time": clamp(radius_time, min_float_value, duration)
         })
 
+    logger.debug(f"Generated parameters for shape '{shape_name}': {params}")
+
     return params
 
-
 def create_random_noise_pipeline(
     spectro_mod,
     max_shapes=5,
@@ -263,31 +318,39 @@ def create_random_noise_pipeline(
     min_db_power=10
 ):
     """
-    ratio_shape, ratio_pattern example:
-    ratio_shape = {"circle": 1, "rectangle": 2, "ellipse": 3, ...}
-    ratio_pattern = {"linear": 1, "random": 2, "convex": 1, ...}
+    Create a NoisePipeline with randomly selected shapes and patterns based on provided ratios.
+    
+    Parameters:
+    - spectro_mod (SpectrogramModifier): The spectrogram modifier instance.
+    - max_shapes (int): Maximum number of shapes to add.
+    - max_patterns (int): Maximum number of patterns to add.
+    - apply_blur (bool): Whether to apply Gaussian blur.
+    - blur_sigma (float): Sigma value for Gaussian blur.
+    - duration (float): Duration of the audio in seconds.
+    - sr (int): Sample rate.
+    - freq_min (float): Minimum frequency value.
+    - min_float_value (float): Minimum float value for certain parameters.
+    - alpha (float): Scaling factor.
+    - ratio_shape (dict): Dictionary defining the selection ratio for shapes.
+    - ratio_pattern (dict): Dictionary defining the selection ratio for patterns.
+    - max_db_power (float): Maximum dB power for shapes.
+    - min_db_power (float): Minimum dB power for shapes.
+    
+    Returns:
+    - pipeline (NoisePipeline): Configured NoisePipeline instance.
     """
+    logger.debug("Creating random NoisePipeline.")
+
     pipeline = NoisePipeline(
         spectro_mod,
         apply_blur=apply_blur,
         blur_sigma=blur_sigma
     )
 
-    # Default candidates if ratios are None
-    default_shapes = [
-        "circle", "rectangle", "ellipse", "horizontal_spike", "vertical_spike",
-        "fog", "pillar", "horizontal_line", "vertical_line",
-        "horizontal_range_dist_db", "vertical_range_dist_db",
-        "trapezoid", "hill", "wave_pattern", "polygon"
-    ]
-    default_patterns = [
-        "linear", "random", "n_linear_repeat_t_sleep", "convex"
-    ]
-
     if ratio_shape is None:
-        ratio_shape = {s: 1 for s in default_shapes}
+        ratio_shape = {s: 1 for s in DEFAULT_SHAPES}
     if ratio_pattern is None:
-        ratio_pattern = {p: 1 for p in default_patterns}
+        ratio_pattern = {p: 1 for p in DEFAULT_PATTERNS}
 
     shape_factory = pipeline.shape_factory
     pattern_factory = pipeline.pattern_factory
@@ -309,9 +372,9 @@ def create_random_noise_pipeline(
             )
             shape = shape_factory.create(shape_name, **shape_params)
             pipeline.add_shape(shape)
-            print(f"Added Shape: {shape_name} -> {shape}")
+            logger.info(f"Added Shape: {shape_name} -> {shape}")
         except Exception as e:
-            print(f"Error configuring shape '{shape_name}': {e}.")
+            logger.error(f"Error configuring shape '{shape_name}': {e}.")
 
     # Add Patterns
     for _ in range(max_patterns):
@@ -332,7 +395,7 @@ def create_random_noise_pipeline(
                 ]
 
             if not possible_shape_names:
-                print("No suitable shapes available for the selected pattern.")
+                logger.warning("No suitable shapes available for the selected pattern.")
                 continue
 
             shape_name = pick_item_from_ratio(
@@ -396,172 +459,9 @@ def create_random_noise_pipeline(
             pattern = pattern_factory.create(pattern_name, pattern_kwargs)
             if pattern:
                 pipeline.add_pattern(pattern)
-                print(f"Added Pattern: {pattern_name} -> {pattern}")
+                logger.info(f"Added Pattern: {pattern_name} -> {pattern}")
         except Exception as e:
-            print(f"Error configuring pattern '{pattern_name}': {e}.")
+            logger.error(f"Error configuring pattern '{pattern_name}': {e}.")
 
-    return pipeline
-
-
-# noise_pipeline/utils.py (continued)
-
-from .noise_pipeline import NoisePipeline
-from .factories import ShapeFactory, PatternFactory
-from .utils import pick_item_from_ratio, generate_shape_params  # Assuming self-imports are handled
-
-
-def create_random_noise_pipeline(
-    spectro_mod,
-    max_shapes=5,
-    max_patterns=3,
-    apply_blur=False,
-    blur_sigma=1.0,
-    duration=8.0,
-    sr=16000,
-    freq_min=20,
-    min_float_value=0.001,
-    alpha=1.0,
-    ratio_shape=None,
-    ratio_pattern=None,
-    max_db_power=20,
-    min_db_power=10
-):
-    """
-    ratio_shape, ratio_pattern example:
-    ratio_shape = {"circle": 1, "rectangle": 2, "ellipse": 3, ...}
-    ratio_pattern = {"linear": 1, "random": 2, "convex": 1, ...}
-    """
-    pipeline = NoisePipeline(
-        spectro_mod,
-        apply_blur=apply_blur,
-        blur_sigma=blur_sigma
-    )
-
-    # Default candidates if ratios are None
-    default_shapes = [
-        "circle", "rectangle", "ellipse", "horizontal_spike", "vertical_spike",
-        "fog", "pillar", "horizontal_line", "vertical_line",
-        "horizontal_range_dist_db", "vertical_range_dist_db",
-        "trapezoid", "hill", "wave_pattern", "polygon"
-    ]
-    default_patterns = [
-        "linear", "random", "n_linear_repeat_t_sleep", "convex"
-    ]
-
-    if ratio_shape is None:
-        ratio_shape = {s: 1 for s in default_shapes}
-    if ratio_pattern is None:
-        ratio_pattern = {p: 1 for p in default_patterns}
-
-    shape_factory = pipeline.shape_factory
-    pattern_factory = pipeline.pattern_factory
-
-    # Add Shapes
-    for _ in range(max_shapes):
-        shape_name = pick_item_from_ratio(ratio_shape)
-        try:
-            shape_params = generate_shape_params(
-                shape_name=shape_name,
-                duration=duration,
-                sr=sr,
-                freq_min=freq_min,
-                time_min=0.0,
-                min_float_value=min_float_value,
-                alpha=alpha,
-                max_db_power=max_db_power,
-                min_db_power=min_db_power
-            )
-            shape = shape_factory.create(shape_name, **shape_params)
-            pipeline.add_shape(shape)
-            print(f"Added Shape: {shape_name} -> {shape}")
-        except Exception as e:
-            print(f"Error configuring shape '{shape_name}': {e}.")
-
-    # Add Patterns
-    for _ in range(max_patterns):
-        pattern_name = pick_item_from_ratio(ratio_pattern)
-        try:
-            # Select suitable shape names for the pattern
-            if pattern_name == "n_linear_repeat_t_sleep":
-                possible_shape_names = [
-                    s for s in ratio_shape.keys()
-                    if not s.endswith('_range_dist_db')
-                ]
-            else:
-                possible_shape_names = [
-                    s for s in ratio_shape.keys()
-                    if s.startswith('horizontal_') or
-                    s.startswith('vertical_') or
-                    s.endswith('_range_dist_db')
-                ]
-
-            if not possible_shape_names:
-                print("No suitable shapes available for the selected pattern.")
-                continue
-
-            shape_name = pick_item_from_ratio(
-                {s: ratio_shape[s] for s in possible_shape_names}
-            )
-
-            shape_params = generate_shape_params(
-                shape_name=shape_name,
-                duration=duration,
-                sr=sr,
-                freq_min=freq_min,
-                time_min=0.0,
-                min_float_value=min_float_value,
-                alpha=alpha,
-                max_db_power=max_db_power,
-                min_db_power=min_db_power
-            )
-
-            # Determine direction based on shape name
-            if shape_name.startswith('horizontal_') or shape_name.endswith('_range_dist_db'):
-                direction = 'freq'
-            elif shape_name.startswith('vertical_') or shape_name.endswith('_range_dist_db'):
-                direction = 'time'
-            else:
-                direction = 'time'
-
-            pattern_kwargs = {
-                "shape_name": shape_name,
-                "shape_params": shape_params
-            }
-
-            if pattern_name == "linear":
-                pattern_kwargs.update({
-                    "direction": direction,
-                    "repeat": 3,  # Fixed number
-                    "spacing": 1.0  # Fixed spacing
-                })
-            elif pattern_name == "random":
-                pattern_kwargs.update({
-                    "n": 5,  # Fixed number
-                    "freq_range": (freq_min, sr),
-                    "time_range": (0.0, duration)
-                })
-            elif pattern_name == "n_linear_repeat_t_sleep":
-                pattern_kwargs.update({
-                    "repeat": 3,  # Fixed number
-                    "repeat_time": 0.5,  # Fixed repeat time
-                    "sleep_time": 1.0,  # Fixed sleep time
-                    "start_time": 0.0,  # Fixed start time
-                    "direction": direction
-                })
-            elif pattern_name == "convex":
-                pattern_kwargs.update({
-                    "freq_min": freq_min,
-                    "freq_max": sr,
-                    "time_min": 0.0,
-                    "time_max": duration,
-                    "n": 5  # Fixed number
-                })
-
-            pattern = pattern_factory.create(pattern_name, pattern_kwargs)
-            if pattern:
-                pipeline.add_pattern(pattern)
-                print(f"Added Pattern: {pattern_name} -> {pattern}")
-        except Exception as e:
-            print(f"Error configuring pattern '{pattern_name}': {e}.")
-
+    logger.debug("Random NoisePipeline creation completed.")
     return pipeline

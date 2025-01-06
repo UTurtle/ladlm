@@ -12,6 +12,7 @@ class SpectrogramModifier:
         sample_rate=16000,
         n_fft=1024,
         hop_length=512,
+        window='hann',
         noise_strength=0.1,
         noise_type='normal',
         noise_params=None
@@ -19,6 +20,7 @@ class SpectrogramModifier:
         self.sample_rate = sample_rate
         self.n_fft = n_fft
         self.hop_length = hop_length
+        self.window= window
         self.noise_strength = noise_strength
         self.noise_type = noise_type
         self.noise_params = noise_params if noise_params else {}
@@ -63,6 +65,9 @@ class SpectrogramModifier:
         length = len(signal)
         noise_type = self.noise_type
         params = self.noise_params
+        seed = params.get('seed', None)
+        if seed is not None:
+            np.random.seed(seed)
         if noise_type == 'normal':
             noise = self._generate_normal_noise(length, params)
         elif noise_type == 'uniform':
@@ -81,7 +86,7 @@ class SpectrogramModifier:
                 self.signal_with_noise,
                 n_fft=self.n_fft,
                 hop_length=self.hop_length,
-                window='hann'
+                window=self.window
             )
         )
         self.S_db = librosa.amplitude_to_db(S, ref=np.max)

@@ -26,6 +26,7 @@ from .patterns import (
     FunctionPattern
 )
 
+from .constants import SHAPE_TYPE_MAPPING, PATTERN_TYPE_MAPPING
 
 class ShapeFactory:
     def create(self, shape_name, **kwargs):

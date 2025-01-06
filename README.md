@@ -62,22 +62,24 @@ How to easy EDA (Exploratory Data Analysis)? -> using Multi-modal LLM
 
 
  - __Augmentation spectrogram:eda-explain-text pair data automation__
-   - [ ] scripting spectrogram_stft_maker
-     - [x] Add horizon and vertical sprite pattern maker
-     - [x] Add noise whole audio (can select)
-       - [x] gaussian noise 
-       - [x] linear noise
-       - [x] others..
-     - [x] Add shape noise (can select)
-     - [x] Add eda-explain-text template
-     - [ ] Automation spectrogram generator 
-       - [x] Make automation data pipeline sample
-       - [x] Refactor ipynb to py
-       - [ ] to create more Generalization data (Lack of detail)
-       - [ ] make for level system for Scheduling Data (just show complex level!)
-       - [ ] condense json for secure resources
-     - [ ] Make Dataset 
-     - [ ] PEFT
+    - [x] scripting spectrogram_stft_maker
+      - [x] Add horizon and vertical sprite pattern maker
+      - [x] Add noise whole audio (can select)
+        - [x] gaussian noise 
+        - [x] linear noise
+        - [x] others..
+      - [x] Add shape noise (can select)
+      - [x] Add eda-explain-text template
+    - [x] Automation spectrogram generator 
+      - [x] Make automation data pipeline sample
+      - [x] Refactor ipynb to py
+      - [ ] to create more Generalization data (Lack of detail)
+      - [x] not print, do logging
+      - [x] make for level system for Scheduling Data (just show complex level!)
+      - [x] condense json for secure resources
+      - [ ] refactor for future...
+    - [x] Make Dataset 
+    - [ ] PEFT
 
 
 - __PEFT Large Anomaly Detection Language Model__ 

@@ -1,4 +1,5 @@
 # Ignore all datasets and checkpoints
+dataset/
 datasets/
 unziped/
 checkpoints/
@@ -7,6 +8,7 @@ dev/
 eval_2024/
 output/
 outputs/
+processed*/
 
 # Ignore model and output directories
 meta-llama-ocrvqa/

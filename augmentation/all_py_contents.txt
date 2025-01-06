@@ -1,0 +1,2730 @@
+# batch_level_main.py
+
+import os
+import random
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+import soundfile as sf
+import logging
+from tqdm import tqdm
+import librosa
+import librosa.display
+
+from noise_pipeline import (
+    SpectrogramModifier,
+    ShapeFactory,
+    PatternFactory,
+    create_random_noise_pipeline,
+    reconstruct_audio_from_final_spectrogram,
+    calculate_complexity_level
+)
+from noise_pipeline.utils import pick_item_from_ratio, generate_shape_params
+
+def setup_logging(disable_logging=False):
+    """
+    Configures the logging settings.
+    - If disable_logging is True, disables all logging.
+    - Else, sets up logging with DEBUG level for file and INFO level for console.
+    - Specific modules can have their logging levels adjusted to reduce verbosity.
+    """
+    if disable_logging:
+        logging.disable(logging.CRITICAL)
+    else:
+        log_dir = "logs"
+        os.makedirs(log_dir, exist_ok=True)
+
+        # Create a custom logger
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)  # Set the root logger level to DEBUG
+
+        # Formatter for logs
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        # File handler for detailed logs
+        file_handler = logging.FileHandler(os.path.join(log_dir, 'batch_level_main.log'))
+        file_handler.setLevel(logging.DEBUG)  # Log all levels to the file
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+        # Stream handler for console output
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)  # Log INFO and above to the console
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+
+        # Adjust specific module loggers to reduce verbosity
+        # Set 'noise_pipeline.utils' logger to WARNING to exclude its DEBUG and INFO logs
+        utils_logger = logging.getLogger('noise_pipeline.utils')
+        utils_logger.setLevel(logging.WARNING)
+
+
+def level_main(
+    level=1,
+    output_base_dir="output",
+    sr=16000,
+    duration=12.0,
+    img_width=1280,
+    img_height=720,
+    img_dpi=100,
+    n_fft=256,
+    hop_length=256,
+    window='hann'
+):
+    """
+    Generates multiple audio files with modified spectrograms, evenly distributed across complexity levels 1-5.
+
+    Parameters:
+    - total_files (int): Total number of files to generate.
+    - output_base_dir (str): Base directory for all outputs.
+    - sr (int): Sample rate.
+    - duration (float): Duration of each audio file in seconds.
+    """
+    logger = logging.getLogger(__name__)
+
+    # Ensure necessary output subdirectories exist
+    output_dirs = {
+        "audio": os.path.join(output_base_dir, "audio"),
+        "spectrogram_with_axes": os.path.join(output_base_dir, "linear_spectrogram_with_axes"),
+        "spectrogram_no_axes": os.path.join(output_base_dir, "linear_spectrogram_no_axes"),
+        "json": os.path.join(output_base_dir, "json")
+    }
+    for dir_path in output_dirs.values():
+        os.makedirs(dir_path, exist_ok=True)
+        logger.debug(f"Ensured existence of directory: {dir_path}")
+
+    # Define shape and pattern ratios
+    # These ratios are generalized; adjust as needed to match desired complexity distribution
+    ratio_shape_base = {
+        "circle": 1,
+        "rectangle": 1,
+        "ellipse": 1,
+        "horizontal_spike": 1,
+        "vertical_spike": 1,
+        "fog": 1,
+        "pillar": 1,
+        "horizontal_line": 1,
+        "vertical_line": 1,
+        "horizontal_range_dist_db": 1,
+        "vertical_range_dist_db": 1,
+        "trapezoid": 1,
+        "hill": 1,
+        "wave_pattern": 1,
+        "polygon": 1
+    }
+
+    ratio_pattern_base = {
+        "linear": 1,
+        "random": 1,
+        "n_linear_repeat_t_sleep": 1,
+        "convex": 1
+    }
+
+    shape_factory = ShapeFactory()
+    pattern_factory = PatternFactory()
+
+    # Generate a zero-padded file_id based on the current index within the level
+    # Format: 'level_{level}_{index:09d}' e.g., 'level_1_000000001'
+    file_id = f"level_{level}_000000001"
+
+    # Parameters for noise generation
+    noise_types = ['normal', 'uniform', 'perlin']
+    noise_type = random.choice(noise_types)
+    noise_strength = random.uniform(5, 15)
+    noise_params = {}
+    if noise_type == 'normal':
+        noise_params = {'mean': 0.0, 'std': 1.0}
+    elif noise_type == 'uniform':
+        noise_params = {'low': -1.0, 'high': 1.0}
+    elif noise_type == 'perlin':
+        noise_params = {'seed': random.randint(0, 1000), 'scale': random.uniform(20.0, 100.0)}
+
+    logger.debug(f"File ID: {file_id} - Noise type: {noise_type}, Strength: {noise_strength}")
+    logger.debug(f"Noise parameters: {noise_params}")
+
+    spectro_mod = SpectrogramModifier(
+        sample_rate=sr,
+        noise_strength=noise_strength,
+        noise_type=noise_type,
+        noise_params=noise_params,
+        window=window,
+        n_fft=n_fft,
+        hop_length=hop_length
+    )
+
+    # Define shape and pattern ratios based on level
+    # Higher levels have more shapes and patterns
+    ratio_shape = {k: v if v else 0 for k, v in ratio_shape_base.items()}
+    ratio_pattern = {k: v if v else 0 for k, v in ratio_pattern_base.items()}
+
+    # Adjust ratios based on the desired level
+    # For simplicity, incrementally add more shapes and patterns as the level increases
+    if level >= 1:
+        ratio_shape["horizontal_spike"] = 1
+        ratio_shape["vertical_spike"] = 1
+    if level >= 2:
+        ratio_shape["horizontal_line"] = 1
+        ratio_shape["vertical_line"] = 1
+        ratio_pattern["linear"] = 1
+    if level >= 3:
+        ratio_shape["horizontal_range_dist_db"] = 1
+        ratio_shape["vertical_range_dist_db"] = 1
+        ratio_pattern["random"] = 1
+    if level >= 4:
+        ratio_shape["trapezoid"] = 1
+        ratio_shape["hill"] = 1
+        ratio_pattern["n_linear_repeat_t_sleep"] = 1
+    if level >= 5:
+        ratio_shape["fog"] = 1
+        ratio_shape["pillar"] = 1
+        ratio_shape["wave_pattern"] = 1
+        ratio_shape["polygon"] = 1
+        ratio_pattern["convex"] = 1
+
+    # Determine the number of shapes and patterns based on the level
+    max_shapes = level  # Number of unique shapes corresponds to level
+    max_patterns = level - 1  # One fewer pattern than level
+
+    logger.debug(f"Creating NoisePipeline with max_shapes={max_shapes}, max_patterns={max_patterns}")
+    try:
+        pipeline = create_random_noise_pipeline(
+            spectro_mod,
+            max_shapes=max_shapes,
+            max_patterns=max_patterns,
+            apply_blur=True,
+            blur_sigma=1.0,
+            duration=duration,
+            sr=sr / 2,  # As per instruction
+            freq_min=0,
+            min_float_value=0.001,
+            alpha=1.0,
+            ratio_shape=ratio_shape,
+            ratio_pattern=ratio_pattern,
+            max_db_power=40,
+            min_db_power=20
+        )
+        logger.debug(f"Created NoisePipeline for file_id {file_id}.")
+    except Exception as e:
+        logger.error(f"Error creating NoisePipeline for file_id {file_id}: {e}")
+
+    # Generate the final spectrogram with noise
+    try:
+        result_db = pipeline.generate(np.random.normal(-40, 1, int(sr * duration)))
+        logger.debug(f"Spectrogram generated for file_id {file_id}.")
+    except Exception as e:
+        logger.error(f"Error generating spectrogram for file_id {file_id}: {e}")
+
+    # Calculate complexity level to ensure it matches the desired level
+    actual_level = calculate_complexity_level(pipeline.shapes, pipeline.patterns)
+    if actual_level != level:
+        logger.warning(f"Desired level: {level}, but achieved level: {actual_level} for file_id {file_id}")
+    else:
+        logger.info(f"Achieved desired complexity level: {actual_level} for file_id {file_id}")
+
+    # Define file paths
+    audio_file_path = os.path.join(output_dirs["audio"], f"automated_audio_{file_id}.wav")
+    spectrogram_with_axes_path = os.path.join(
+        output_dirs["spectrogram_with_axes"],
+        f"automated_linear_spectrogram_with_axes_{file_id}.png"
+    )
+    spectrogram_no_axes_path = os.path.join(
+        output_dirs["spectrogram_no_axes"],
+        f"automated_linear_spectrogram_no_axes_{file_id}.png"
+    )
+    json_file_path = os.path.join(output_dirs["json"], f"automated_audio_{file_id}.json")
+
+    # Plot and save spectrogram with axes
+    try:
+        fig_with_axes, _ = spectro_mod.plot_spectrogram(
+            show_labels=True,
+            title=f'Final Spectrogram Level {actual_level}'
+        )
+        fig_with_axes.savefig(spectrogram_with_axes_path)
+        plt.close(fig_with_axes)
+    except Exception as e:
+        logger.error(f"Error saving spectrogram with axes for file_id {file_id}: {e}")
+
+    # Plot and save spectrogram without axes
+    try:
+        fig_no_axes, _ = spectro_mod.plot_spectrogram(
+            show_labels=False,
+            title=f'Final Spectrogram Level {actual_level}'
+        )
+        fig_no_axes.savefig(spectrogram_no_axes_path, bbox_inches='tight', pad_inches=0)
+        plt.close(fig_no_axes)
+    except Exception as e:
+        logger.error(f"Error saving spectrogram without axes for file_id {file_id}: {e}")
+
+    # Reconstruct audio from the final spectrogram
+    try:
+        reconstructed = reconstruct_audio_from_final_spectrogram(spectro_mod)
+        # Save the reconstructed audio using soundfile
+        sf.write(audio_file_path, reconstructed, int(sr))
+    except Exception as e:
+        logger.error(f"Error reconstructing/saving audio for file_id {file_id}: {e}")
+
+    # Prepare JSON metadata
+    try:
+        extracted_data = {
+            "file_path": audio_file_path,
+            "file_name": os.path.basename(audio_file_path),
+            "spectrogram_with_axes": spectrogram_with_axes_path,
+            "spectrogram_no_axes": spectrogram_no_axes_path,
+            "spectrogram_base": {
+                "sample_rate": spectro_mod.sample_rate,
+                "n_fft": spectro_mod.n_fft,
+                "hop_length": spectro_mod.hop_length,
+                "noise_strength": spectro_mod.noise_strength,
+                "noise_type": spectro_mod.noise_type,
+                "noise_params": spectro_mod.noise_params
+            },
+            "shapes": [
+                {
+                    "type": shape.__class__.__name__,
+                    "parameters": shape.__dict__
+                } for shape in pipeline.shapes
+            ],
+            "patterns": [
+                {
+                    "type": pattern.__class__.__name__,
+                    "parameters": pattern.__dict__
+                } for pattern in pipeline.patterns
+            ],
+            "complexity_level": actual_level,  # Include complexity level
+            "shape_count": len(set([shape.__class__.__name__ for shape in pipeline.shapes])),  # Number of unique shapes
+            "pattern_count": len(pipeline.patterns),  # Number of patterns
+            "duration": duration 
+        }
+
+        # Save JSON metadata
+        with open(json_file_path, 'w') as json_file:
+            json.dump(extracted_data, json_file, indent=4)
+    except Exception as e:
+        logger.error(f"Error saving JSON metadata for file_id {file_id}: {e}")
+
+    # 통합된 로그 메시지
+    try:
+        if all([
+            os.path.exists(spectrogram_with_axes_path),
+            os.path.exists(spectrogram_no_axes_path),
+            os.path.exists(audio_file_path),
+            os.path.exists(json_file_path)
+        ]):
+            logger.info(
+                f"Saved spectrogram with axes to {spectrogram_with_axes_path}, "
+                f"spectrogram without axes to {spectrogram_no_axes_path}, "
+                f"reconstructed audio to {audio_file_path}, "
+                f"and JSON metadata to {json_file_path}."
+            )
+        else:
+            logger.warning(f"Some files were not saved correctly for file_id {file_id}.")
+    except Exception as e:
+        logger.error(f"Error during logging combined save paths for file_id {file_id}: {e}")
+
+
+def main():
+    level=1
+    output_dir = "output_test"
+    sr = 16000
+    duration = 12.0
+    disable_logging = True  
+
+    # 이미지 해상도 파라미터
+    img_width = 1200
+    img_height = 700
+    img_dpi = 100
+
+    # librosa 파라미터
+    n_fft = 256
+    hop_length = 256
+    window = 'hann'
+
+    # 로깅 설정
+    setup_logging(disable_logging=disable_logging)
+
+    # batch_level_main 함수 호출
+    level_main(
+        level=level,
+        output_base_dir=output_dir,
+        sr=sr,
+        duration=duration,
+        img_width=img_width,
+        img_height=img_height,
+        img_dpi=img_dpi,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        window=window
+    )
+
+
+if __name__ == "__main__":
+    main()
+import os
+import json
+import pandas as pd
+from pathlib import Path
+from datasets import Dataset, Features, Value, Sequence
+
+def round_floats(obj, precision=3):
+    if isinstance(obj, dict):
+        return {k: round_floats(v, precision) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [round_floats(elem, precision) for elem in obj]
+    elif isinstance(obj, float):
+        return round(obj, precision)
+    else:
+        return obj
+
+def process_json_files(output_json_dir, processed_json_dir):
+    os.makedirs(processed_json_dir, exist_ok=True)
+    
+    for filename in os.listdir(output_json_dir):
+        if filename.endswith('.json'):
+            input_path = os.path.join(output_json_dir, filename)
+            output_path = os.path.join(processed_json_dir, filename)
+            
+            with open(input_path, 'r') as f:
+                data = json.load(f)
+            
+            # 파일 이름 형식 변경 (중복 레벨 제거)
+            for key in ['file_path', 'file_name', 'spectrogram_with_axes', 'spectrogram_no_axes']:
+                original_value = data.get(key, "")
+                parts = original_value.split('_level_')
+                if len(parts) > 2:
+                    # 첫 번째 '_level_' 이후 중복 제거
+                    new_value = '_level_'.join([parts[0], parts[1]] + parts[2:])
+                    # Remove duplicate 'level_{level}'
+                    new_value = new_value.replace(f'_level_{data["complexity_level"]}_level_{data["complexity_level"]}', f'_level_{data["complexity_level"]}')
+                    data[key] = new_value
+            
+            # 소수점 반올림
+            data = round_floats(data, precision=3)
+            
+            # 'function_based_explanation_spectrogram' 필드를 문자열로 변환
+            function_based_explanation = {
+                "spectrogram_base": data.pop("spectrogram_base"),
+                "shapes": data.pop("shapes"),
+                "patterns": data.pop("patterns")
+            }
+            # JSON 문자열로 변환하면서 공백 제거
+            function_based_explanation_str = json.dumps(function_based_explanation, separators=(',', ':'))
+            data['function_based_explanation_spectrogram'] = function_based_explanation_str
+            
+            # JSON 파일 저장
+            with open(output_path, 'w') as f:
+                json.dump(data, f, separators=(',', ':'), ensure_ascii=False)
+    
+    print(f"Processed JSON files are saved in: {processed_json_dir}")
+
+def create_dataset(processed_json_dir, output_dataset_dir):
+    os.makedirs(output_dataset_dir, exist_ok=True)
+    
+    dataset = []
+    
+    for filename in os.listdir(processed_json_dir):
+        if filename.endswith('.json'):
+            file_path = os.path.join(processed_json_dir, filename)
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+                dataset.append(data)
+    
+    # DataFrame으로 변환
+    df = pd.DataFrame(dataset)
+    
+    # 데이터셋을 JSON Lines 형식으로 저장
+    dataset_json_path = os.path.join(output_dataset_dir, 'dataset.json')
+    df.to_json(dataset_json_path, orient='records', lines=True)
+    
+    print(f"Aggregated dataset saved to: {dataset_json_path}")
+
+def load_dataset_from_json(dataset_json_path):
+    # pandas를 사용하여 데이터 로드
+    df = pd.read_json(dataset_json_path, lines=True)
+    
+    # Features 정의
+    features = Features({
+        'file_path': Value('string'),
+        'file_name': Value('string'),
+        'spectrogram_with_axes': Value('string'),
+        'spectrogram_no_axes': Value('string'),
+        'function_based_explanation_spectrogram': Value('string'),  # 문자열로 변경
+        'complexity_level': Value('int32'),
+        'shape_count': Value('int32'),
+        'pattern_count': Value('int32'),
+        'duration': Value('float32')  # duration 필드 추가
+    })
+    
+    # Hugging Face Dataset 생성
+    dataset = Dataset.from_pandas(df, features=features)
+    
+    return dataset
+
+def save_dataset_as_arrow(dataset, output_dataset_dir):
+    """
+    Saves the Hugging Face Dataset in Arrow format.
+    
+    Parameters:
+    - dataset (Dataset): Hugging Face Dataset object.
+    - output_dataset_dir (str): Directory to save the Arrow files.
+    """
+    os.makedirs(output_dataset_dir, exist_ok=True)
+    dataset.save_to_disk(output_dataset_dir)
+    print(f"Dataset saved to {output_dataset_dir}")
+
+if __name__ == "__main__":
+    # 단계 1: JSON 데이터 가공
+    output_json_dir = "output/json"
+    processed_json_dir = "processed_json"
+    process_json_files(output_json_dir, processed_json_dir)
+    
+    # 단계 2: 데이터셋 생성
+    output_dataset_json_dir = "dataset"
+    create_dataset(processed_json_dir, output_dataset_json_dir)
+    
+    # 단계 3: Hugging Face Dataset 생성 및 저장
+    dataset_json_path = os.path.join(output_dataset_json_dir, 'dataset.json')
+    hf_dataset_dir = "datasets/ladlm_function_based_dataset"
+    
+    dataset = load_dataset_from_json(dataset_json_path)
+    save_dataset_as_arrow(dataset, hf_dataset_dir)
+from datasets import load_from_disk
+import librosa
+import matplotlib.pyplot as plt
+from PIL import Image
+import json
+
+dataset = load_from_disk("datasets/ladlm_function_generated_dataset")
+
+# 첫 번째 샘플 로드
+sample = dataset[0]
+
+# 오디오 파일 로드
+audio, sr = librosa.load(sample['file_path'], sr=None)
+
+# 스펙트로그램 이미지 로드
+spectrogram_with_axes = Image.open(sample['spectrogram_with_axes'])
+spectrogram_no_axes = Image.open(sample['spectrogram_no_axes'])
+
+# JSON 문자열 파싱
+spectrogram_details = json.loads(sample['function_based_explanation_spectrogram'])
+
+print(spectrogram_details)
+
+# 오디오 시각화
+plt.figure(figsize=(10, 4))
+plt.plot(audio)
+plt.title(sample['file_name'])
+plt.show()
+
+# 스펙트로그램 이미지 시각화
+spectrogram_with_axes.show()
+spectrogram_no_axes.show()
+
+# 이미지 크기 및 DPI 확인
+print("Spectrogram with axes size:", spectrogram_with_axes.size, "DPI:", spectrogram_with_axes.info.get('dpi'))
+print("Spectrogram no axes size:", spectrogram_no_axes.size, "DPI:", spectrogram_no_axes.info.get('dpi'))
+# batch_level_main.py
+
+import os
+import random
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+import soundfile as sf
+import logging
+from tqdm import tqdm
+import librosa
+import librosa.display
+
+from noise_pipeline import (
+    SpectrogramModifier,
+    ShapeFactory,
+    PatternFactory,
+    create_random_noise_pipeline,
+    reconstruct_audio_from_final_spectrogram,
+    calculate_complexity_level
+)
+from noise_pipeline.utils import pick_item_from_ratio, generate_shape_params
+
+def setup_logging(disable_logging=False):
+    """
+    Configures the logging settings.
+    - If disable_logging is True, disables all logging.
+    - Else, sets up logging with DEBUG level for file and INFO level for console.
+    - Specific modules can have their logging levels adjusted to reduce verbosity.
+    """
+    if disable_logging:
+        logging.disable(logging.CRITICAL)
+    else:
+        log_dir = "logs"
+        os.makedirs(log_dir, exist_ok=True)
+
+        # Create a custom logger
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)  # Set the root logger level to DEBUG
+
+        # Formatter for logs
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        # File handler for detailed logs
+        file_handler = logging.FileHandler(os.path.join(log_dir, 'batch_level_main.log'))
+        file_handler.setLevel(logging.DEBUG)  # Log all levels to the file
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+        # Stream handler for console output
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)  # Log INFO and above to the console
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+
+        # Adjust specific module loggers to reduce verbosity
+        # Set 'noise_pipeline.utils' logger to WARNING to exclude its DEBUG and INFO logs
+        utils_logger = logging.getLogger('noise_pipeline.utils')
+        utils_logger.setLevel(logging.WARNING)
+
+
+def batch_level_main(
+    total_files=1000,
+    output_base_dir="output",
+    sr=16000,
+    duration=12.0,
+    img_width=1280,
+    img_height=720,
+    img_dpi=100,
+    n_fft=256,
+    hop_length=256,
+    window='hann'
+):
+    """
+    Generates multiple audio files with modified spectrograms, evenly distributed across complexity levels 1-5.
+
+    Parameters:
+    - total_files (int): Total number of files to generate.
+    - output_base_dir (str): Base directory for all outputs.
+    - sr (int): Sample rate.
+    - duration (float): Duration of each audio file in seconds.
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting batch generation of {total_files} files.")
+
+    # Validate input parameters
+    if total_files < 1:
+        logger.error("total_files must be at least 1.")
+        raise ValueError("total_files must be at least 1.")
+    if sr <= 0:
+        logger.error("Sample rate (sr) must be positive.")
+        raise ValueError("Sample rate (sr) must be positive.")
+    if duration <= 0:
+        logger.error("Duration must be positive.")
+        raise ValueError("Duration must be positive.")
+
+    # Ensure necessary output subdirectories exist
+    output_dirs = {
+        "audio": os.path.join(output_base_dir, "audio"),
+        "spectrogram_with_axes": os.path.join(output_base_dir, "linear_spectrogram_with_axes"),
+        "spectrogram_no_axes": os.path.join(output_base_dir, "linear_spectrogram_no_axes"),
+        "json": os.path.join(output_base_dir, "json")
+    }
+    for dir_path in output_dirs.values():
+        os.makedirs(dir_path, exist_ok=True)
+        logger.debug(f"Ensured existence of directory: {dir_path}")
+
+    # Define shape and pattern ratios
+    # These ratios are generalized; adjust as needed to match desired complexity distribution
+    ratio_shape_base = {
+        "circle": 1,
+        "rectangle": 1,
+        "ellipse": 1,
+        "horizontal_spike": 1,
+        "vertical_spike": 1,
+        "fog": 1,
+        "pillar": 1,
+        "horizontal_line": 1,
+        "vertical_line": 1,
+        "horizontal_range_dist_db": 1,
+        "vertical_range_dist_db": 1,
+        "trapezoid": 1,
+        "hill": 1,
+        "wave_pattern": 1,
+        "polygon": 1
+    }
+
+    ratio_pattern_base = {
+        "linear": 1,
+        "random": 1,
+        "n_linear_repeat_t_sleep": 1,
+        "convex": 1
+    }
+
+    shape_factory = ShapeFactory()
+    pattern_factory = PatternFactory()
+
+    # Calculate the number of files per level
+    files_per_level = total_files // 5
+    remaining_files = total_files % 5
+    level_counts = {level: files_per_level for level in range(1, 6)}
+    # Distribute remaining files
+    for level in range(1, 6):
+        if remaining_files > 0:
+            level_counts[level] += 1
+            remaining_files -= 1
+        else:
+            break
+
+    logger.info(f"Files distribution across levels: {level_counts}")
+
+    # Loop over each level and generate the corresponding number of files
+    for level, count in level_counts.items():
+        logger.info(f"Generating {count} files for Level {level}.")
+        for i in tqdm(range(1, count + 1), desc=f"Generating Level {level} Files"):
+            # Generate a zero-padded file_id based on the current index within the level
+            # Format: 'level_{level}_{index:09d}' e.g., 'level_1_000000001'
+            file_id = f"level_{level}_{i:09d}"
+
+            # Parameters for noise generation
+            noise_types = ['normal', 'uniform', 'perlin']
+            noise_type = random.choice(noise_types)
+            noise_strength = random.uniform(5, 15)
+            noise_params = {}
+            seed = random.randint(0, int(1e10))
+            if noise_type == 'normal':
+                noise_params = {'mean': 0.0, 'std': 1.0, 'seed': seed}
+            elif noise_type == 'uniform':
+                noise_params = {'low': -1.0, 'high': 1.0, 'seed': seed}
+            elif noise_type == 'perlin':
+                noise_params = {'seed': seed, 'scale': random.uniform(20.0, 100.0)}
+
+            logger.debug(f"File ID: {file_id} - Noise type: {noise_type}, Strength: {noise_strength}")
+            logger.debug(f"Noise parameters: {noise_params}")
+
+            spectro_mod = SpectrogramModifier(
+                sample_rate=sr,
+                noise_strength=noise_strength,
+                noise_type=noise_type,
+                noise_params=noise_params,
+                window=window,
+                n_fft=n_fft,
+                hop_length=hop_length
+            )
+
+            # Define shape and pattern ratios based on level
+            # Higher levels have more shapes and patterns
+            ratio_shape = {k: v if v else 0 for k, v in ratio_shape_base.items()}
+            ratio_pattern = {k: v if v else 0 for k, v in ratio_pattern_base.items()}
+
+            # Adjust ratios based on the desired level
+            # For simplicity, incrementally add more shapes and patterns as the level increases
+            if level >= 1:
+                ratio_shape["horizontal_spike"] = 1
+                ratio_shape["vertical_spike"] = 1
+            if level >= 2:
+                ratio_shape["horizontal_line"] = 1
+                ratio_shape["vertical_line"] = 1
+                ratio_pattern["linear"] = 1
+            if level >= 3:
+                ratio_shape["horizontal_range_dist_db"] = 1
+                ratio_shape["vertical_range_dist_db"] = 1
+                ratio_pattern["random"] = 1
+            if level >= 4:
+                ratio_shape["trapezoid"] = 1
+                ratio_shape["hill"] = 1
+                ratio_pattern["n_linear_repeat_t_sleep"] = 1
+            if level >= 5:
+                ratio_shape["fog"] = 1
+                ratio_shape["pillar"] = 1
+                ratio_shape["wave_pattern"] = 1
+                ratio_shape["polygon"] = 1
+                ratio_pattern["convex"] = 1
+
+            # Determine the number of shapes and patterns based on the level
+            max_shapes = level  # Number of unique shapes corresponds to level
+            max_patterns = level - 1  # One fewer pattern than level
+
+            logger.debug(f"Creating NoisePipeline with max_shapes={max_shapes}, max_patterns={max_patterns}")
+            try:
+                pipeline = create_random_noise_pipeline(
+                    spectro_mod,
+                    max_shapes=max_shapes,
+                    max_patterns=max_patterns,
+                    apply_blur=True,
+                    blur_sigma=1.0,
+                    duration=duration,
+                    sr=sr / 2,  # As per instruction
+                    freq_min=0,
+                    min_float_value=0.001,
+                    alpha=1.0,
+                    ratio_shape=ratio_shape,
+                    ratio_pattern=ratio_pattern,
+                    max_db_power=40,
+                    min_db_power=20
+                )
+                logger.debug(f"Created NoisePipeline for file_id {file_id}.")
+            except Exception as e:
+                logger.error(f"Error creating NoisePipeline for file_id {file_id}: {e}")
+                continue
+
+            # Generate the final spectrogram with noise
+            try:
+                result_db = pipeline.generate(np.random.normal(-40, 1, int(sr * duration)))
+                logger.debug(f"Spectrogram generated for file_id {file_id}.")
+            except Exception as e:
+                logger.error(f"Error generating spectrogram for file_id {file_id}: {e}")
+                continue
+
+            # Calculate complexity level to ensure it matches the desired level
+            actual_level = calculate_complexity_level(pipeline.shapes, pipeline.patterns)
+            if actual_level != level:
+                logger.warning(f"Desired level: {level}, but achieved level: {actual_level} for file_id {file_id}")
+            else:
+                logger.info(f"Achieved desired complexity level: {actual_level} for file_id {file_id}")
+
+            # Define file paths
+            audio_file_path = os.path.join(output_dirs["audio"], f"automated_audio_{file_id}.wav")
+            spectrogram_with_axes_path = os.path.join(
+                output_dirs["spectrogram_with_axes"],
+                f"automated_linear_spectrogram_with_axes_{file_id}.png"
+            )
+            spectrogram_no_axes_path = os.path.join(
+                output_dirs["spectrogram_no_axes"],
+                f"automated_linear_spectrogram_no_axes_{file_id}.png"
+            )
+            json_file_path = os.path.join(output_dirs["json"], f"automated_audio_{file_id}.json")
+
+            # Plot and save spectrogram with axes
+            try:
+                fig_with_axes, _ = spectro_mod.plot_spectrogram(
+                    show_labels=True,
+                    title=f'Final Spectrogram Level {actual_level}'
+                )
+                fig_with_axes.savefig(spectrogram_with_axes_path)
+                plt.close(fig_with_axes)
+            except Exception as e:
+                logger.error(f"Error saving spectrogram with axes for file_id {file_id}: {e}")
+
+            # Plot and save spectrogram without axes
+            try:
+                fig_no_axes, _ = spectro_mod.plot_spectrogram(
+                    show_labels=False,
+                    title=f'Final Spectrogram Level {actual_level}'
+                )
+                fig_no_axes.savefig(spectrogram_no_axes_path, bbox_inches='tight', pad_inches=0)
+                plt.close(fig_no_axes)
+            except Exception as e:
+                logger.error(f"Error saving spectrogram without axes for file_id {file_id}: {e}")
+
+            # Reconstruct audio from the final spectrogram
+            try:
+                reconstructed = reconstruct_audio_from_final_spectrogram(spectro_mod)
+                # Save the reconstructed audio using soundfile
+                sf.write(audio_file_path, reconstructed, int(sr))
+            except Exception as e:
+                logger.error(f"Error reconstructing/saving audio for file_id {file_id}: {e}")
+
+            # Prepare JSON metadata
+            try:
+                extracted_data = {
+                    "file_path": audio_file_path,
+                    "file_name": os.path.basename(audio_file_path),
+                    "spectrogram_with_axes": spectrogram_with_axes_path,
+                    "spectrogram_no_axes": spectrogram_no_axes_path,
+                    "spectrogram_base": {
+                        "sample_rate": spectro_mod.sample_rate,
+                        "n_fft": spectro_mod.n_fft,
+                        "hop_length": spectro_mod.hop_length,
+                        "noise_strength": spectro_mod.noise_strength,
+                        "noise_type": spectro_mod.noise_type,
+                        "noise_params": spectro_mod.noise_params
+                    },
+                    "shapes": [
+                        {
+                            "type": shape.__class__.__name__,
+                            "parameters": shape.__dict__
+                        } for shape in pipeline.shapes
+                    ],
+                    "patterns": [
+                        {
+                            "type": pattern.__class__.__name__,
+                            "parameters": pattern.__dict__
+                        } for pattern in pipeline.patterns
+                    ],
+                    "complexity_level": actual_level,  # Include complexity level
+                    "shape_count": len(set([shape.__class__.__name__ for shape in pipeline.shapes])),  # Number of unique shapes
+                    "pattern_count": len(pipeline.patterns),  # Number of patterns
+                    "duration": duration 
+                }
+
+                # Save JSON metadata
+                with open(json_file_path, 'w') as json_file:
+                    json.dump(extracted_data, json_file, indent=4)
+            except Exception as e:
+                logger.error(f"Error saving JSON metadata for file_id {file_id}: {e}")
+
+            # 통합된 로그 메시지
+            try:
+                if all([
+                    os.path.exists(spectrogram_with_axes_path),
+                    os.path.exists(spectrogram_no_axes_path),
+                    os.path.exists(audio_file_path),
+                    os.path.exists(json_file_path)
+                ]):
+                    logger.info(
+                        f"Saved spectrogram with axes to {spectrogram_with_axes_path}, "
+                        f"spectrogram without axes to {spectrogram_no_axes_path}, "
+                        f"reconstructed audio to {audio_file_path}, "
+                        f"and JSON metadata to {json_file_path}."
+                    )
+                else:
+                    logger.warning(f"Some files were not saved correctly for file_id {file_id}.")
+            except Exception as e:
+                logger.error(f"Error during logging combined save paths for file_id {file_id}: {e}")
+
+
+def main():
+    total_files = 100  
+    output_dir = "output"
+    sr = 16000
+    duration = 12.0
+    disable_logging = True  
+
+    # 이미지 해상도 파라미터
+    img_width = 1200
+    img_height = 700
+    img_dpi = 100
+
+    # librosa 파라미터
+    n_fft = 256
+    hop_length = 256
+    window = 'hann'
+
+    # 로깅 설정
+    setup_logging(disable_logging=disable_logging)
+
+    # batch_level_main 함수 호출
+    batch_level_main(
+        total_files=total_files,
+        output_base_dir=output_dir,
+        sr=sr,
+        duration=duration,
+        img_width=img_width,
+        img_height=img_height,
+        img_dpi=img_dpi,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        window=window
+    )
+
+
+if __name__ == "__main__":
+    main()
+from datasets import load_from_disk
+import numpy as np
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import soundfile as sf
+import json
+import os
+
+from noise_pipeline import (
+    SpectrogramModifier,
+    NoisePipeline,
+    ShapeFactory,
+    PatternFactory,
+    reconstruct_audio_from_final_spectrogram
+)
+
+
+def load_json_metadata(json_path):
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    # function_based_explanation_spectrogram를 파싱
+    details = json.loads(data['function_based_explanation_spectrogram'])
+    spectrogram_base = details['spectrogram_base']
+    shapes = details['shapes']
+    patterns = details['patterns']
+    return data, spectrogram_base, shapes, patterns
+
+
+def reconstruct_pipeline_spectrogram_and_audio(data, spectrogram_base, shapes, patterns):
+    # 샘플레이트, n_fft, hop_length 등 파라미터 설정
+    sample_rate = spectrogram_base['sample_rate']
+    n_fft = spectrogram_base['n_fft']
+    hop_length = spectrogram_base['hop_length']
+    noise_strength = spectrogram_base['noise_strength']
+    noise_type = spectrogram_base['noise_type']
+    noise_params = spectrogram_base['noise_params']
+
+    # 1) SpectrogramModifier 준비
+    spectro_mod = SpectrogramModifier(
+        sample_rate=sample_rate,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        window='hann',
+        noise_strength=noise_strength,
+        noise_type=noise_type,
+        noise_params=noise_params
+    )
+
+    # 2) NoisePipeline 구성
+    pipeline = NoisePipeline(
+        spectro_mod=spectro_mod,
+        apply_blur=False,
+        blur_sigma=1.0
+    )
+
+    # shape와 pattern을 직접 추가하기 위해 팩토리 준비
+    shape_factory = ShapeFactory()
+    pattern_factory = PatternFactory()
+
+    # shapes 추가
+    for shape_info in shapes:
+        shape_name = shape_info['type']
+        shape_params = shape_info['parameters']
+        shape_obj = shape_factory.create(shape_name.lower(), **shape_params)
+        pipeline.add_shape(shape_obj)
+
+    # patterns 추가
+    for pattern_info in patterns:
+        pattern_name = pattern_info['type']
+        pattern_params = pattern_info['parameters']
+        pattern_obj = pattern_factory.create(pattern_name.lower(), pattern_params)
+        pipeline.add_pattern(pattern_obj)
+
+    # 3) 실제 오디오 신호(또는 무음) 생성
+    duration = data['duration']
+    signal_length = int(sample_rate * duration)
+    # 일단 무음(길이는 duration)에 노이즈를 섞어서 사용
+    silence_signal = np.zeros(signal_length)
+
+    # 4) 최종 스펙트로그램 생성 + 오디오 복원
+    pipeline.generate(silence_signal)
+    S_db = spectro_mod.S_db.copy()
+    reconstructed_audio = reconstruct_audio_from_final_spectrogram(spectro_mod)
+
+    return S_db, reconstructed_audio, sample_rate
+
+
+def convert_dataset_to_json(dataset_dir, output_json_dir):
+    os.makedirs(output_json_dir, exist_ok=True)
+    dataset = load_from_disk(dataset_dir)
+    for i, example in enumerate(dataset):
+        file_name = f"data_{i:09d}.json"
+        output_path = os.path.join(output_json_dir, file_name)
+        with open(output_path, 'w') as f:
+            json.dump(example, f, indent=4)
+    print(f"Dataset converted to JSON files in: {output_json_dir}")
+
+
+def reconstruct_spectrogram_and_audio(json_dir, output_dir, img_width=1280, img_height=720, img_dpi=100):
+    os.makedirs(output_dir, exist_ok=True)
+    spectrogram_with_axes_dir = os.path.join(output_dir, "spectrogram_with_axes")
+    audio_dir = os.path.join(output_dir, "audio")
+    os.makedirs(spectrogram_with_axes_dir, exist_ok=True)
+    os.makedirs(audio_dir, exist_ok=True)
+
+    for file_name in os.listdir(json_dir):
+        if not file_name.endswith('.json'):
+            continue
+
+        json_path = os.path.join(json_dir, file_name)
+        data, spectrogram_base, shapes, patterns = load_json_metadata(json_path)
+
+        # 복원된 S_db와 오디오 신호 얻기
+        S_db, reconstructed_audio, sr = reconstruct_pipeline_spectrogram_and_audio(
+            data, spectrogram_base, shapes, patterns
+        )
+
+        # 스펙트로그램 시각화(축 포함)
+        fig, ax = plt.subplots(figsize=(img_width / img_dpi, img_height / img_dpi))
+        img = librosa.display.specshow(S_db, sr=sr, hop_length=spectrogram_base['hop_length'],
+                                       x_axis='time', y_axis='linear', ax=ax)
+        fig.colorbar(img, ax=ax, format="%+2.0f dB")
+        ax.set_title(f"Spectrogram: {file_name}")
+        spectrogram_with_axes_path = os.path.join(spectrogram_with_axes_dir, file_name.replace('.json', '.png'))
+        fig.savefig(spectrogram_with_axes_path, dpi=img_dpi)
+        plt.close(fig)
+
+        # 오디오 저장
+        audio_path = os.path.join(audio_dir, file_name.replace('.json', '.wav'))
+        sf.write(audio_path, reconstructed_audio, sr)
+
+        print(f"[{file_name}] Spectrogram/Audio reconstructed and saved.")
+
+
+def main():
+    dataset_dir = "datasets/ladlm_function_based_dataset"
+    output_json_dir = "reconstructed_json"
+    reconstructed_output_dir = "reconstructed_output"
+
+    # 1) Arrow -> JSON 변환
+    print("Converting dataset to JSON files...")
+    convert_dataset_to_json(dataset_dir, output_json_dir)
+
+    # 2) JSON 정보를 바탕으로 스펙트로그램 및 오디오 재구성
+    print("Reconstructing spectrograms and audio...")
+    reconstruct_spectrogram_and_audio(output_json_dir, reconstructed_output_dir)
+
+
+if __name__ == "__main__":
+    main()
+# noise_pipeline/utils.py
+
+import random
+import numpy as np
+import logging
+
+from noise_pipeline.noise_pipeline import NoisePipeline 
+from noise_pipeline import ShapeFactory, PatternFactory
+
+# Initialize logger for this module
+logger = logging.getLogger(__name__)
+
+def calculate_complexity_level(shapes, patterns):
+    """
+    Calculate the complexity level based on the number of unique shapes and patterns.
+    
+    Levels:
+    1. 1 shape, 0 patterns
+    2. 2 shapes, 1 pattern
+    3. 3 shapes, 2 patterns
+    4. 4 shapes, 3 patterns
+    5. 5+ shapes, 4+ patterns
+    """
+    unique_shapes = set([shape.__class__.__name__ for shape in shapes])
+    num_shapes = len(unique_shapes)
+    num_patterns = len(patterns)
+    
+    logger.debug(f"Calculating complexity level: {num_shapes} unique shapes, {num_patterns} patterns.")
+    
+    if num_shapes >= 5 or num_patterns >= 4:
+        level = 5
+    elif num_shapes == 4 or num_patterns == 3:
+        level = 4
+    elif num_shapes == 3 or num_patterns == 2:
+        level = 3
+    elif num_shapes == 2 or num_patterns == 1:
+        level = 2
+    else:
+        level = 1
+    
+    logger.info(f"Determined complexity level: {level}")
+    return level
+
+def pick_item_from_ratio(ratio_dict):
+    """
+    Picks an item from the ratio_dict based on the weights.
+    
+    Parameters:
+    - ratio_dict (dict): Dictionary with items as keys and their corresponding weights as values.
+    
+    Returns:
+    - selected_item: The chosen item based on the defined weights.
+    """
+    logger.debug(f"Picking item from ratio_dict: {ratio_dict}")
+    items = list(ratio_dict.keys())
+    weights = list(ratio_dict.values())
+    total = sum(weights)
+    if total == 0:
+        logger.error("Total weight is zero in pick_item_from_ratio.")
+        raise ValueError("Total weight cannot be zero.")
+    r = random.uniform(0, total)
+    s = 0
+    for item, w in zip(items, weights):
+        s += w
+        if r <= s:
+            logger.debug(f"Selected item: {item} with weight: {w}")
+            return item
+    selected_item = items[-1]
+    logger.debug(f"Selected last item by default: {selected_item}")
+    return selected_item
+
+def generate_shape_params(
+    shape_name,
+    duration,
+    sr,
+    freq_min=20,
+    time_min=0.0,
+    min_float_value=0.001,
+    alpha=1.0,
+    max_db_power=20,
+    min_db_power=10
+):
+    """
+    Generates all parameters randomly based on the shape_name.
+    Clamps time and frequency values within their specified boundaries.
+    """
+    logger.debug(f"Generating shape parameters for shape: {shape_name}")
+
+    params = {
+        "strength_dB": random.uniform(min_db_power, max_db_power)
+    }
+
+    # Generate frequency bounds
+    random_freq_min = random.uniform(freq_min, sr)
+    random_freq_max = random.uniform(freq_min, sr)
+    if random_freq_min > random_freq_max:
+        random_freq_min, random_freq_max = random_freq_max, random_freq_min
+
+    # Generate time bounds
+    random_time_min = random.uniform(time_min, duration)
+    random_time_max = random.uniform(time_min, duration)
+    if random_time_min > random_time_max:
+        random_time_min, random_time_max = random_time_max, random_time_min
+
+    # Define a helper function to clamp values
+    def clamp(value, min_value, max_value):
+        return max(min_value, min(value, max_value))
+
+    # Shape-specific parameter generation
+    if shape_name == "horizontal_spike":
+        params.update({
+            "center_freq": clamp(
+                random.uniform(random_freq_min, random_freq_max),
+                0,
+                sr
+            ),
+            "center_time": clamp(
+                random.uniform(random_time_min, random_time_max),
+                0,
+                duration
+            ),
+            "radius_freq": clamp(
+                random.uniform(30.0, 100.0),
+                15.0,
+                sr / 2
+            ),
+            "radius_time": clamp(
+                random.uniform(random_time_max * 0.001, random_time_max * 0.1),
+                0.05,
+                duration * alpha
+            )
+        })
+    elif shape_name == "vertical_spike":
+        params.update({
+            "center_freq": clamp(
+                random.uniform(random_freq_min, random_freq_max) * 0.001,
+                0,
+                sr
+            ),
+            "center_time": clamp(
+                random.uniform(random_time_min, random_time_max),
+                0,
+                duration
+            ),
+            "radius_freq": clamp(
+                random.uniform(random_freq_max * 0.1, random_freq_max),
+                0.1 * sr,
+                sr
+            ),
+            "radius_time": clamp(
+                random.uniform(random_time_max * 0.01, random_time_max * 0.1),
+                0.05,
+                duration * alpha
+            )
+        })
+    elif shape_name == "trapezoid":
+        params.update({
+            "freq_min": clamp(random_freq_min, freq_min, sr),
+            "freq_max": clamp(random_freq_max, freq_min, sr),
+            "time_min": clamp(random_time_min, time_min, duration),
+            "time_max": clamp(random_time_max, time_min, duration),
+            "slope_freq": random.uniform(0.0, 2.0),
+            "slope_time": random.uniform(0.0, 2.0)
+        })
+    elif shape_name == "fog":
+        params.update({
+            "coverage": clamp(random.uniform(0, 1), 0, 1)
+        })
+    elif shape_name == "hill":
+        freq_center = random.uniform(random_freq_min, random_freq_max)
+        center_time = random.uniform(random_time_min, random_time_max)
+        freq_width = random.uniform(min_float_value, (random_freq_max - random_freq_min) * alpha)
+        time_width = random.uniform(min_float_value, duration * alpha)
+
+        params.update({
+            "freq_center": clamp(freq_center, 0, sr),
+            "time_center": clamp(center_time, 0, duration),
+            "freq_width": clamp(freq_width, min_float_value, sr),
+            "time_width": clamp(time_width, min_float_value, duration)
+        })
+    elif shape_name == "wave_pattern":
+        params.update({
+            "axis": random.choice(["time", "freq"]),
+            "frequency": clamp(random.uniform(0.1, 10), 0.1, 10)
+        })
+    elif shape_name == "polygon":
+        num_vertices = random.randint(3, 8)
+        vertices = []
+        for _ in range(num_vertices):
+            f_rand = random.uniform(random_freq_min, random_freq_max)
+            t_rand = random.uniform(random_time_min, random_time_max)
+            f_rand = clamp(f_rand, 0, sr)
+            t_rand = clamp(t_rand, 0, duration)
+            vertices.append([f_rand, t_rand])
+        params.update({
+            "vertices": vertices
+        })
+    elif shape_name == "rectangle":
+        params.update({
+            "freq_min": clamp(random_freq_min, freq_min, sr),
+            "freq_max": clamp(random_freq_max, freq_min, sr),
+            "time_min": clamp(random_time_min, time_min, duration),
+            "time_max": clamp(random_time_max, time_min, duration)
+        })
+    elif shape_name == "pillar":
+        params.update({
+            "freq_min": clamp(random_freq_min, freq_min, sr),
+            "freq_max": clamp(random_freq_max, freq_min, sr)
+        })
+    elif shape_name == "horizontal_line":
+        center_freq = random.uniform(random_freq_min, random_freq_max)
+        params.update({
+            "center_freq": clamp(center_freq, 0, sr),
+            "thickness": random.randint(1, 3)
+        })
+    elif shape_name == "vertical_line":
+        center_time = random.uniform(random_time_min, random_time_max)
+        params.update({
+            "center_time": clamp(center_time, 0, duration),
+            "thickness": random.randint(1, 3)
+        })
+    elif shape_name == "horizontal_range_dist_db":
+        dist_options = ["gaussian"]
+        chosen_dist = random.choice(dist_options)
+        freq_min_range = clamp(
+            random_freq_min - 0.1,  # Adjusted threshold
+            0,
+            sr
+        )
+        freq_max_range = clamp(
+            random_freq_min + 0.1,  # Adjusted threshold
+            0,
+            sr
+        )
+        sigma = clamp(
+            random.uniform(1000.0 * alpha, 1100.0 * alpha),
+            1000.0 * alpha,
+            1100.0 * alpha
+        )
+
+        params.update({
+            "freq_min": freq_min_range,
+            "freq_max": freq_max_range,
+            "distribution": chosen_dist,
+            "distribution_params": {"sigma": sigma}
+        })
+    elif shape_name == "vertical_range_dist_db":
+        dist_options = ["gaussian"]
+        chosen_dist = random.choice(dist_options)
+        time_min_range = clamp(
+            random_time_min - 0.1,  # Adjusted threshold
+            0,
+            duration
+        )
+        time_max_range = clamp(
+            random_time_max + 0.1,  # Adjusted threshold
+            0,
+            duration
+        )
+        sigma = clamp(
+            random.uniform(1.0 * alpha, 2.0 * alpha),
+            1.0 * alpha,
+            2.0 * alpha
+        )
+
+        params.update({
+            "time_min": time_min_range,
+            "time_max": time_max_range,
+            "distribution": chosen_dist,
+            "distribution_params": {"sigma": sigma}
+        })
+    elif shape_name == "ellipse":
+        center_freq = random.uniform(random_freq_min, random_freq_max)
+        center_time = random.uniform(random_time_min, random_time_max)
+        radius_freq = random.uniform(10, (random_freq_max - random_freq_min) * alpha)
+        radius_time = random.uniform(min_float_value, duration * alpha)
+
+        params.update({
+            "center_freq": clamp(center_freq, 0, sr),
+            "center_time": clamp(center_time, 0, duration),
+            "radius_freq": clamp(radius_freq, 10, sr),
+            "radius_time": clamp(radius_time, min_float_value, duration)
+        })
+    else:
+        # Default handling for shapes like circle
+        center_freq = random.uniform(random_freq_min, random_freq_max)
+        center_time = random.uniform(random_time_min, random_time_max)
+        radius_freq = random.uniform(10, (random_freq_max - random_freq_min) * alpha)
+        radius_time = random.uniform(min_float_value, duration * alpha)
+
+        params.update({
+            "center_freq": clamp(center_freq, 0, sr),
+            "center_time": clamp(center_time, 0, duration),
+            "radius_freq": clamp(radius_freq, 10, sr),
+            "radius_time": clamp(radius_time, min_float_value, duration)
+        })
+
+    logger.debug(f"Generated parameters for shape '{shape_name}': {params}")
+
+    return params
+
+def create_random_noise_pipeline(
+    spectro_mod,
+    max_shapes=5,
+    max_patterns=3,
+    apply_blur=False,
+    blur_sigma=1.0,
+    duration=8.0,
+    sr=16000,
+    freq_min=20,
+    min_float_value=0.001,
+    alpha=1.0,
+    ratio_shape=None,
+    ratio_pattern=None,
+    max_db_power=20,
+    min_db_power=10
+):
+    """
+    Create a NoisePipeline with randomly selected shapes and patterns based on provided ratios.
+    
+    Parameters:
+    - spectro_mod (SpectrogramModifier): The spectrogram modifier instance.
+    - max_shapes (int): Maximum number of shapes to add.
+    - max_patterns (int): Maximum number of patterns to add.
+    - apply_blur (bool): Whether to apply Gaussian blur.
+    - blur_sigma (float): Sigma value for Gaussian blur.
+    - duration (float): Duration of the audio in seconds.
+    - sr (int): Sample rate.
+    - freq_min (float): Minimum frequency value.
+    - min_float_value (float): Minimum float value for certain parameters.
+    - alpha (float): Scaling factor.
+    - ratio_shape (dict): Dictionary defining the selection ratio for shapes.
+    - ratio_pattern (dict): Dictionary defining the selection ratio for patterns.
+    - max_db_power (float): Maximum dB power for shapes.
+    - min_db_power (float): Minimum dB power for shapes.
+    
+    Returns:
+    - pipeline (NoisePipeline): Configured NoisePipeline instance.
+    """
+    logger.debug("Creating random NoisePipeline.")
+
+    pipeline = NoisePipeline(
+        spectro_mod,
+        apply_blur=apply_blur,
+        blur_sigma=blur_sigma
+    )
+
+    # Default candidates if ratios are None
+    default_shapes = [
+        "circle", "rectangle", "ellipse", "horizontal_spike", "vertical_spike",
+        "fog", "pillar", "horizontal_line", "vertical_line",
+        "horizontal_range_dist_db", "vertical_range_dist_db",
+        "trapezoid", "hill", "wave_pattern", "polygon"
+    ]
+    default_patterns = [
+        "linear", "random", "n_linear_repeat_t_sleep", "convex"
+    ]
+
+    if ratio_shape is None:
+        ratio_shape = {s: 1 for s in default_shapes}
+    if ratio_pattern is None:
+        ratio_pattern = {p: 1 for p in default_patterns}
+
+    shape_factory = pipeline.shape_factory
+    pattern_factory = pipeline.pattern_factory
+
+    # Add Shapes
+    for _ in range(max_shapes):
+        shape_name = pick_item_from_ratio(ratio_shape)
+        try:
+            shape_params = generate_shape_params(
+                shape_name=shape_name,
+                duration=duration,
+                sr=sr,
+                freq_min=freq_min,
+                time_min=0.0,
+                min_float_value=min_float_value,
+                alpha=alpha,
+                max_db_power=max_db_power,
+                min_db_power=min_db_power
+            )
+            shape = shape_factory.create(shape_name, **shape_params)
+            pipeline.add_shape(shape)
+            logger.info(f"Added Shape: {shape_name} -> {shape}")
+        except Exception as e:
+            logger.error(f"Error configuring shape '{shape_name}': {e}.")
+
+    # Add Patterns
+    for _ in range(max_patterns):
+        pattern_name = pick_item_from_ratio(ratio_pattern)
+        try:
+            # Select suitable shape names for the pattern
+            if pattern_name == "n_linear_repeat_t_sleep":
+                possible_shape_names = [
+                    s for s in ratio_shape.keys()
+                    if not s.endswith('_range_dist_db')
+                ]
+            else:
+                possible_shape_names = [
+                    s for s in ratio_shape.keys()
+                    if s.startswith('horizontal_') or
+                    s.startswith('vertical_') or
+                    s.endswith('_range_dist_db')
+                ]
+
+            if not possible_shape_names:
+                logger.warning("No suitable shapes available for the selected pattern.")
+                continue
+
+            shape_name = pick_item_from_ratio(
+                {s: ratio_shape[s] for s in possible_shape_names}
+            )
+
+            shape_params = generate_shape_params(
+                shape_name=shape_name,
+                duration=duration,
+                sr=sr,
+                freq_min=freq_min,
+                time_min=0.0,
+                min_float_value=min_float_value,
+                alpha=alpha,
+                max_db_power=max_db_power,
+                min_db_power=min_db_power
+            )
+
+            # Determine direction based on shape name
+            if shape_name.startswith('horizontal_') or shape_name.endswith('_range_dist_db'):
+                direction = 'freq'
+            elif shape_name.startswith('vertical_') or shape_name.endswith('_range_dist_db'):
+                direction = 'time'
+            else:
+                direction = 'time'
+
+            pattern_kwargs = {
+                "shape_name": shape_name,
+                "shape_params": shape_params
+            }
+
+            if pattern_name == "linear":
+                pattern_kwargs.update({
+                    "direction": direction,
+                    "repeat": 3,  # Fixed number
+                    "spacing": 1.0  # Fixed spacing
+                })
+            elif pattern_name == "random":
+                pattern_kwargs.update({
+                    "n": 5,  # Fixed number
+                    "freq_range": (freq_min, sr),
+                    "time_range": (0.0, duration)
+                })
+            elif pattern_name == "n_linear_repeat_t_sleep":
+                pattern_kwargs.update({
+                    "repeat": 3,  # Fixed number
+                    "repeat_time": 0.5,  # Fixed repeat time
+                    "sleep_time": 1.0,  # Fixed sleep time
+                    "start_time": 0.0,  # Fixed start time
+                    "direction": direction
+                })
+            elif pattern_name == "convex":
+                pattern_kwargs.update({
+                    "freq_min": freq_min,
+                    "freq_max": sr,
+                    "time_min": 0.0,
+                    "time_max": duration,
+                    "n": 5  # Fixed number
+                })
+
+            pattern = pattern_factory.create(pattern_name, pattern_kwargs)
+            if pattern:
+                pipeline.add_pattern(pattern)
+                logger.info(f"Added Pattern: {pattern_name} -> {pattern}")
+        except Exception as e:
+            logger.error(f"Error configuring pattern '{pattern_name}': {e}.")
+
+    logger.debug("Random NoisePipeline creation completed.")
+    return pipeline
+# noise_pipeline/spectrogram_modifier.py
+
+import numpy as np
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+
+
+class SpectrogramModifier:
+    def __init__(
+        self,
+        sample_rate=16000,
+        n_fft=1024,
+        hop_length=512,
+        window='hann',
+        noise_strength=0.1,
+        noise_type='normal',
+        noise_params=None
+    ):
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.window= window
+        self.noise_strength = noise_strength
+        self.noise_type = noise_type
+        self.noise_params = noise_params if noise_params else {}
+        self.signal = None
+        self.signal_with_noise = None
+        self.S_db = None
+
+    def _generate_normal_noise(self, length, params):
+        mean = params.get('mean', 0.0)
+        std = params.get('std', 1.0)
+        return np.random.normal(mean, std, length)
+
+    def _generate_uniform_noise(self, length, params):
+        low = params.get('low', -1.0)
+        high = params.get('high', 1.0)
+        return np.random.uniform(low, high, length)
+
+    def _generate_perlin_noise(self, length, params):
+        def fade(t):
+            return 6 * t**5 - 15 * t**4 + 10 * t**3
+
+        seed = params.get('seed', 42)
+        np.random.seed(seed)
+        perm = np.arange(256)
+        np.random.shuffle(perm)
+        perm = np.stack([perm, perm]).flatten()
+        scale = params.get('scale', 50.0)
+        xs = np.linspace(0, length / scale, length)
+        xi = np.floor(xs).astype(int)
+        xf = xs - xi
+        xi = xi % 256
+        left_hash = perm[xi]
+        right_hash = perm[xi + 1]
+        u = fade(xf)
+        left_grad = ((left_hash & 1) * 2 - 1) * xf
+        right_grad = ((right_hash & 1) * 2 - 1) * (xf - 1)
+        noise = (1 - u) * left_grad + u * right_grad
+        noise = noise / np.max(np.abs(noise))
+        return noise
+
+    def generate_noise(self, signal):
+        length = len(signal)
+        noise_type = self.noise_type
+        params = self.noise_params
+        seed = params.get('seed', None)
+        if seed is not None:
+            np.random.seed(seed)
+        if noise_type == 'normal':
+            noise = self._generate_normal_noise(length, params)
+        elif noise_type == 'uniform':
+            noise = self._generate_uniform_noise(length, params)
+        elif noise_type == 'perlin':
+            noise = self._generate_perlin_noise(length, params)
+        else:
+            noise = np.zeros_like(signal)
+        return signal + noise * self.noise_strength
+
+    def compute_spectrogram(self, signal):
+        self.signal = signal
+        self.signal_with_noise = self.generate_noise(signal)
+        S = np.abs(
+            librosa.stft(
+                self.signal_with_noise,
+                n_fft=self.n_fft,
+                hop_length=self.hop_length,
+                window=self.window
+            )
+        )
+        self.S_db = librosa.amplitude_to_db(S, ref=np.max)
+        return self.S_db
+
+    def _get_freqs(self):
+        return np.linspace(0, self.sample_rate / 2, self.S_db.shape[0])
+
+    def _get_times(self):
+        return librosa.frames_to_time(
+            np.arange(self.S_db.shape[1]),
+            sr=self.sample_rate,
+            hop_length=self.hop_length
+        )
+
+    def apply_dB_mask(self, dB_mask):
+        self.S_db += dB_mask
+
+    def plot_spectrogram(self, show_labels=True, colormap='magma', title='Spectrogram'):
+        if self.S_db is None:
+            raise ValueError("compute_spectrogram() must be called first.")
+        fig, ax = plt.subplots(figsize=(12, 6))
+        img = librosa.display.specshow(
+            self.S_db,
+            sr=self.sample_rate,
+            hop_length=self.hop_length,
+            x_axis='time',
+            y_axis='linear',
+            ax=ax,
+            cmap=colormap
+        )
+        if show_labels:
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Frequency (Hz)')
+            ax.set_title(title)
+            fig.colorbar(img, ax=ax, format="%+2.0f dB")
+        else:
+            ax.axis('off')
+            plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+        plt.tight_layout(pad=0.5)
+        return fig, ax
+# noise_pipeline/noise_pipeline.py
+
+import numpy as np
+from scipy.ndimage import gaussian_filter
+# noise_pipeline/noise_pipeline.py (continued)
+
+from .factories import ShapeFactory, PatternFactory
+
+
+class NoisePipeline:
+    def __init__(
+        self,
+        spectro_mod,
+        apply_blur=False,
+        blur_sigma=1.0
+    ):
+        self.spectro_mod = spectro_mod
+        self.shape_factory = ShapeFactory()
+        self.pattern_factory = PatternFactory()
+        self.shapes = []
+        self.patterns = []
+        self.apply_blur = apply_blur
+        self.blur_sigma = blur_sigma
+
+    def add_shape(self, shape):
+        self.shapes.append(shape)
+        return self
+
+    def add_pattern(self, pattern):
+        if pattern is not None:
+            self.patterns.append(pattern)
+        return self
+
+    def generate(self, signal):
+        spec = self.spectro_mod.compute_spectrogram(signal)
+        total_mask = np.zeros_like(spec)
+
+        for shape in self.shapes:
+            shape_mask = shape.create_mask(spec.shape, self.spectro_mod)
+            total_mask += shape_mask
+
+        for pattern in self.patterns:
+            pattern_mask = pattern.create_mask(
+                spec.shape,
+                self.spectro_mod,
+                self.shape_factory
+            )
+            total_mask += pattern_mask
+
+        if self.apply_blur and self.blur_sigma > 0:
+            total_mask = gaussian_filter(total_mask, sigma=self.blur_sigma)
+
+        self.spectro_mod.apply_dB_mask(total_mask)
+        return self.spectro_mod.S_db
+# noise_pipeline/patterns.py
+
+from abc import ABC, abstractmethod
+import numpy as np
+
+class Pattern(ABC):
+    @abstractmethod
+    def create_mask(self, spectro_shape, spectro_mod, shape_factory):
+        pass
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.__dict__})"
+
+
+class LinearPattern(Pattern):
+    def __init__(
+        self,
+        shape_name,
+        shape_params,
+        direction='time',
+        repeat=5,
+        spacing=1.0
+    ):
+        self.shape_name = shape_name
+        self.shape_params = shape_params
+        self.direction = direction
+        self.repeat = repeat
+        self.spacing = spacing
+
+    def create_mask(self, spectro_shape, spectro_mod, shape_factory):
+        mask = np.zeros(spectro_shape)
+        for i in range(self.repeat):
+            offset = i * self.spacing
+            params = self.shape_params.copy()
+            if self.direction == 'time' and 'center_time' in params:
+                params['center_time'] += offset
+            elif self.direction == 'freq' and 'center_freq' in params:
+                params['center_freq'] += offset
+
+            shape_obj = shape_factory.create(self.shape_name, **params)
+            if shape_obj is not None:
+                mask += shape_obj.create_mask(spectro_shape, spectro_mod)
+        return mask
+
+
+class RandomPattern(Pattern):
+    def __init__(
+        self,
+        shape_name,
+        shape_params,
+        n=10,
+        freq_range=None,
+        time_range=None
+    ):
+        self.shape_name = shape_name
+        self.shape_params = shape_params
+        self.n = n
+        self.freq_range = freq_range if freq_range else (0, 8000)
+        self.time_range = time_range if time_range else (0, 10)
+
+    def create_mask(self, spectro_shape, spectro_mod, shape_factory):
+        mask = np.zeros(spectro_shape)
+        for _ in range(self.n):
+            params = self.shape_params.copy()
+            if 'center_freq' in params:
+                params['center_freq'] = np.random.uniform(*self.freq_range)
+            if 'center_time' in params:
+                params['center_time'] = np.random.uniform(*self.time_range)
+
+            shape_obj = shape_factory.create(self.shape_name, **params)
+            if shape_obj:
+                mask += shape_obj.create_mask(spectro_shape, spectro_mod)
+        return mask
+
+
+class NLinearRepeatTSleepPattern(Pattern):
+    def __init__(
+        self,
+        shape_name,
+        shape_params,
+        repeat=3,
+        repeat_time=0.5,
+        repeat_hz=None,
+        sleep_time=5.0,
+        start_time=0.0,
+        direction='time'
+    ):
+        self.shape_name = shape_name
+        self.shape_params = shape_params
+        self.repeat = repeat
+        self.repeat_time = repeat_time
+        self.repeat_hz = repeat_hz if repeat_hz is not None else repeat_time * 1000
+        self.sleep_time = sleep_time
+        self.start_time = start_time
+        self.direction = direction
+
+    def create_mask(self, spectro_shape, spectro_mod, shape_factory):
+        mask = np.zeros(spectro_shape)
+        if self.direction == 'time':
+            current_time = self.start_time
+        elif self.direction == 'freq':
+            current_freq = self.start_time
+        else:
+            raise ValueError("Invalid direction. Use 'time' or 'freq'.")
+
+        for _ in range(self.repeat):
+            params = self.shape_params.copy()
+            if self.direction == 'time' and 'center_time' in params:
+                params['center_time'] = current_time
+            elif self.direction == 'freq' and 'center_freq' in params:
+                params['center_freq'] = current_freq
+
+            shape_obj = shape_factory.create(self.shape_name, **params)
+            if shape_obj:
+                mask += shape_obj.create_mask(spectro_shape, spectro_mod)
+
+            if self.direction == 'time':
+                current_time += self.repeat_time
+            elif self.direction == 'freq':
+                current_freq += self.repeat_hz
+
+        return mask
+
+
+class ConvexPattern(Pattern):
+    def __init__(
+        self,
+        shape_name,
+        shape_params,
+        freq_min,
+        freq_max,
+        time_min,
+        time_max,
+        n=10
+    ):
+        self.shape_name = shape_name
+        self.shape_params = shape_params
+        self.freq_min = freq_min
+        self.freq_max = freq_max
+        self.time_min = time_min
+        self.time_max = time_max
+        self.n = n
+
+    def create_mask(self, spectro_shape, spectro_mod, shape_factory):
+        mask = np.zeros(spectro_shape)
+        freqs = np.linspace(self.freq_min, self.freq_max, self.n)
+        times = np.linspace(self.time_min, self.time_max, self.n)
+        for i in range(self.n):
+            params = self.shape_params.copy()
+            if 'center_freq' in params:
+                params['center_freq'] = freqs[i]
+            if 'center_time' in params:
+                params['center_time'] = times[i]
+
+            shape_obj = shape_factory.create(self.shape_name, **params)
+            if shape_obj:
+                mask += shape_obj.create_mask(spectro_shape, spectro_mod)
+        return mask
+
+
+class FunctionPattern(Pattern):
+    def __init__(self, func):
+        self.func = func
+
+    def create_mask(self, spectro_shape, spectro_mod, shape_factory):
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+        ff, tt = np.meshgrid(freqs, times, indexing='ij')
+        return self.func(ff, tt)
+# noise_pipeline/shapes.py
+
+import numpy as np
+from abc import ABC, abstractmethod
+from matplotlib.path import Path
+
+
+class DBShape(ABC):
+    @abstractmethod
+    def create_mask(self, spectro_shape, spectro_mod):
+        pass
+
+
+class BaseShape(DBShape):
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        pass
+
+    def create_mask(self, spectro_shape, spectro_mod):
+        return self.generate_shape_mask(spectro_shape, spectro_mod)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.__dict__})"
+
+
+class CircleDBShape(BaseShape):
+    def __init__(self, center_freq, center_time, radius_freq, radius_time, strength_dB):
+        super().__init__()
+        self.center_freq = center_freq
+        self.center_time = center_time
+        self.radius_freq = radius_freq
+        self.radius_time = radius_time
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+        ff, tt = np.meshgrid(freqs, times, indexing='ij')
+        dist = (
+            (ff - self.center_freq) ** 2 / (self.radius_freq ** 2)
+            + (tt - self.center_time) ** 2 / (self.radius_time ** 2)
+        )
+        circle = (dist <= 1).astype(float)
+        return circle * self.strength_dB
+
+
+class TrapezoidDBShape(BaseShape):
+    def __init__(
+        self,
+        freq_min,
+        freq_max,
+        time_min,
+        time_max,
+        slope_freq,
+        slope_time,
+        strength_dB
+    ):
+        super().__init__()
+        self.freq_min = freq_min
+        self.freq_max = freq_max
+        self.time_min = time_min
+        self.time_max = time_max
+        self.slope_freq = slope_freq
+        self.slope_time = slope_time
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        mask = np.zeros(spectro_shape)
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+
+        freq_mask = (freqs >= self.freq_min) & (freqs <= self.freq_max)
+        time_mask = (times >= self.time_min) & (times <= self.time_max)
+        f_inds = np.where(freq_mask)[0]
+        t_inds = np.where(time_mask)[0]
+
+        if len(f_inds) == 0 or len(t_inds) == 0:
+            return mask
+
+        f_dist = (freqs[f_inds] - self.freq_min) / (self.freq_max - self.freq_min)
+        t_dist = (times[t_inds] - self.time_min) / (self.time_max - self.time_min)
+
+        for i, fi in enumerate(f_inds):
+            for j, ti in enumerate(t_inds):
+                val = self.strength_dB
+                val *= (1 - abs(f_dist[i] - 0.5) * 2 * self.slope_freq)
+                val *= (1 - abs(t_dist[j] - 0.5) * 2 * self.slope_time)
+                mask[fi, ti] += val
+        return mask
+
+
+class SpikeDBShape(BaseShape):
+    def __init__(
+        self,
+        center_freq,
+        center_time,
+        radius_freq,
+        radius_time,
+        strength_dB,
+        rotate=0.0
+    ):
+        super().__init__()
+        self.center_freq = center_freq
+        self.center_time = center_time
+        self.radius_freq = radius_freq
+        self.radius_time = radius_time
+        self.strength_dB = strength_dB
+        self.rotate_deg = rotate
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+        ff, tt = np.meshgrid(freqs, times, indexing='ij')
+
+        f_shift = ff - self.center_freq
+        t_shift = tt - self.center_time
+
+        angle_rad = np.deg2rad(self.rotate_deg)
+        cos_a = np.cos(angle_rad)
+        sin_a = np.sin(angle_rad)
+
+        f_rot = f_shift * cos_a - t_shift * sin_a
+        t_rot = f_shift * sin_a + t_shift * cos_a
+
+        dist = np.sqrt(
+            (f_rot**2) / (self.radius_freq ** 2) +
+            (t_rot**2) / (self.radius_time ** 2)
+        )
+        spike = np.exp(-dist**2) * self.strength_dB
+        return spike
+
+
+class PillarDBShape(BaseShape):
+    def __init__(self, freq_min, freq_max, strength_dB):
+        super().__init__()
+        self.freq_min = freq_min
+        self.freq_max = freq_max
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        mask = np.zeros(spectro_shape)
+        freqs = spectro_mod._get_freqs()
+        freq_indices = np.where(
+            (freqs >= self.freq_min) & (freqs <= self.freq_max)
+        )[0]
+        if len(freq_indices) == 0:
+            return mask
+        mask[freq_indices, :] += self.strength_dB
+        return mask
+
+
+class RectangleDBShape(BaseShape):
+    def __init__(
+        self,
+        freq_min,
+        freq_max,
+        time_min,
+        time_max,
+        strength_dB
+    ):
+        super().__init__()
+        self.freq_min = freq_min
+        self.freq_max = freq_max
+        self.time_min = time_min
+        self.time_max = time_max
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        mask = np.zeros(spectro_shape)
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+        freq_indices = np.where(
+            (freqs >= self.freq_min) & (freqs <= self.freq_max)
+        )[0]
+        time_indices = np.where(
+            (times >= self.time_min) & (times <= self.time_max)
+        )[0]
+        if len(freq_indices) == 0 or len(time_indices) == 0:
+            return mask
+        mask[np.ix_(freq_indices, time_indices)] += self.strength_dB
+        return mask
+
+
+class EllipseDBShape(BaseShape):
+    def __init__(
+        self,
+        center_freq,
+        center_time,
+        radius_freq,
+        radius_time,
+        strength_dB
+    ):
+        super().__init__()
+        self.center_freq = center_freq
+        self.center_time = center_time
+        self.radius_freq = radius_freq
+        self.radius_time = radius_time
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+        ff, tt = np.meshgrid(freqs, times, indexing='ij')
+        dist = (
+            (ff - self.center_freq) ** 2 / (self.radius_freq ** 2) +
+            (tt - self.center_time) ** 2 / (self.radius_time ** 2)
+        )
+        ellipse = (dist <= 1).astype(float)
+        return ellipse * self.strength_dB
+
+
+class HorizontalSpikeDBShape(BaseShape):
+    def __init__(
+        self,
+        center_freq,
+        center_time,
+        radius_freq,
+        radius_time,
+        strength_dB
+    ):
+        super().__init__()
+        self.center_freq = center_freq
+        self.center_time = center_time
+        self.radius_freq = radius_freq
+        self.radius_time = radius_time
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        spike_shape = SpikeDBShape(
+            center_freq=self.center_freq,
+            center_time=self.center_time,
+            radius_freq=self.radius_freq,
+            radius_time=self.radius_time,
+            strength_dB=self.strength_dB,
+            rotate=0.0
+        )
+        return spike_shape.generate_shape_mask(spectro_shape, spectro_mod)
+
+
+class VerticalSpikeDBShape(BaseShape):
+    def __init__(
+        self,
+        center_freq,
+        center_time,
+        radius_freq,
+        radius_time,
+        strength_dB
+    ):
+        super().__init__()
+        self.center_freq = center_freq
+        self.center_time = center_time
+        self.radius_freq = radius_freq
+        self.radius_time = radius_time
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        spike_shape = SpikeDBShape(
+            center_freq=self.center_freq,
+            center_time=self.center_time,
+            radius_freq=self.radius_freq,
+            radius_time=self.radius_time,
+            strength_dB=self.strength_dB,
+            rotate=0.0
+        )
+        return spike_shape.generate_shape_mask(spectro_shape, spectro_mod)
+
+
+class HorizontalRangeDistributionDBShape(BaseShape):
+    def __init__(
+        self,
+        freq_min,
+        freq_max,
+        strength_dB,
+        distribution='gaussian',
+        distribution_params=None
+    ):
+        super().__init__()
+        self.freq_min = freq_min
+        self.freq_max = freq_max
+        self.strength_dB = strength_dB
+        self.distribution = distribution
+        self.distribution_params = distribution_params if distribution_params else {}
+
+    def _get_distribution(self, values):
+        sigma = self.distribution_params.get('sigma', 1000)
+        center = (values.min() + values.max()) / 2
+        dist = np.exp(-0.5 * ((values - center) / sigma) ** 2)
+        if dist.max() != 0:
+            dist /= dist.max()
+        return dist
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        mask = np.zeros(spectro_shape)
+        freqs = spectro_mod._get_freqs()
+        freq_indices = np.where(
+            (freqs >= self.freq_min) & (freqs <= self.freq_max)
+        )[0]
+
+        if len(freq_indices) == 0:
+            return mask
+
+        freq_values = freqs[freq_indices]
+        dist_values = self._get_distribution(freq_values)
+
+        for i, fi in enumerate(freq_indices):
+            mask[fi, :] += self.strength_dB * dist_values[i]
+
+        return mask
+
+
+class VerticalRangeDistributionDBShape(BaseShape):
+    def __init__(
+        self,
+        time_min,
+        time_max,
+        strength_dB,
+        distribution='gaussian',
+        distribution_params=None
+    ):
+        super().__init__()
+        self.time_min = time_min
+        self.time_max = time_max
+        self.strength_dB = strength_dB
+        self.distribution = distribution
+        self.distribution_params = distribution_params if distribution_params else {}
+
+    def _get_distribution(self, values):
+        sigma = self.distribution_params.get('sigma', 0.5)
+        center = (values.min() + values.max()) / 2
+        dist = np.exp(-0.5 * ((values - center) / sigma) ** 2)
+        dist /= dist.max()
+        return dist
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        mask = np.zeros(spectro_shape)
+        times = spectro_mod._get_times()
+        time_indices = np.where(
+            (times >= self.time_min) & (times <= self.time_max)
+        )[0]
+        if len(time_indices) == 0:
+            return mask
+
+        time_vals = times[time_indices]
+        dist_values = self._get_distribution(time_vals)
+
+        for i, ti in enumerate(time_indices):
+            mask[:, ti] += self.strength_dB * dist_values[i]
+
+        return mask
+
+
+class HillDBShape(BaseShape):
+    def __init__(
+        self,
+        freq_center,
+        time_center,
+        freq_width,
+        time_width,
+        strength_dB
+    ):
+        super().__init__()
+        self.freq_center = freq_center
+        self.time_center = time_center
+        self.freq_width = freq_width
+        self.time_width = time_width
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+        ff, tt = np.meshgrid(freqs, times, indexing='ij')
+        dist = np.sqrt(
+            ((ff - self.freq_center) ** 2) / (self.freq_width ** 2) +
+            ((tt - self.time_center) ** 2) / (self.time_width ** 2)
+        )
+        hill = (1 - dist)
+        hill[hill < 0] = 0
+        return hill * self.strength_dB
+
+
+class FogDBShape(BaseShape):
+    def __init__(self, strength_dB, coverage=1.0):
+        super().__init__()
+        self.strength_dB = strength_dB
+        self.coverage = coverage
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        random_map = np.random.uniform(0, 1, spectro_shape)
+        fog = (random_map < self.coverage).astype(float)
+        fog *= self.strength_dB * (np.random.randn(*spectro_shape) * 0.1)
+        return fog
+
+
+class PolygonDBShape(BaseShape):
+    def __init__(self, vertices, strength_dB):
+        super().__init__()
+        self.vertices = vertices
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+        ff, tt = np.meshgrid(freqs, times, indexing='ij')
+
+        path = Path(self.vertices)
+        points = np.vstack((ff.ravel(), tt.ravel())).T
+        inside = path.contains_points(points).reshape(ff.shape)
+        mask = np.zeros(spectro_shape)
+        mask[inside] = self.strength_dB
+        return mask
+
+
+class WavePatternDBShape(BaseShape):
+    def __init__(self, axis='time', frequency=1.0, strength_dB=5.0):
+        super().__init__()
+        self.axis = axis
+        self.frequency = frequency
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+        mask = np.zeros(spectro_shape)
+        if self.axis == 'time':
+            wave = np.sin(2 * np.pi * self.frequency * times)
+            mask += wave[np.newaxis, :] * self.strength_dB
+        else:
+            wave = np.sin(2 * np.pi * self.frequency * freqs)
+            mask += wave[:, np.newaxis] * self.strength_dB
+        return mask
+
+
+class RealWorldNoiseDBShape(BaseShape):
+    def __init__(
+        self,
+        audio_path,
+        freq_min,
+        freq_max,
+        time_min,
+        time_max,
+        strength_dB=0
+    ):
+        super().__init__()
+        self.audio_path = audio_path
+        self.freq_min = freq_min
+        self.freq_max = freq_max
+        self.time_min = time_min
+        self.time_max = time_max
+        self.strength_dB = strength_dB
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        y, sr = librosa.load(self.audio_path, sr=spectro_mod.sample_rate)
+        S = np.abs(
+            librosa.stft(y, n_fft=spectro_mod.n_fft, hop_length=spectro_mod.hop_length)
+        )
+        S_db = librosa.amplitude_to_db(S, ref=np.max)
+
+        freqs = spectro_mod._get_freqs()
+        times = spectro_mod._get_times()
+        freq_indices = np.where(
+            (freqs >= self.freq_min) & (freqs <= self.freq_max)
+        )[0]
+        time_indices = np.where(
+            (times >= self.time_min) & (times <= self.time_max)
+        )[0]
+
+        if len(freq_indices) == 0 or len(time_indices) == 0:
+            return np.zeros(spectro_shape)
+
+        f_cut = min(len(freq_indices), S_db.shape[0])
+        t_cut = min(len(time_indices), S_db.shape[1])
+
+        mask = np.zeros(spectro_shape)
+        mask[freq_indices[:f_cut], time_indices[:t_cut]] += (
+            S_db[:f_cut, :t_cut] + self.strength_dB
+        )
+        return mask
+
+
+class HorizontalLineDBShape(BaseShape):
+    def __init__(self, center_freq, strength_dB, thickness=2):
+        super().__init__()
+        self.center_freq = center_freq
+        self.strength_dB = strength_dB
+        self.thickness = thickness
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        mask = np.zeros(spectro_shape)
+        freqs = spectro_mod._get_freqs()
+        freq_idx = np.argmin(np.abs(freqs - self.center_freq))
+        start_idx = max(freq_idx - self.thickness // 2, 0)
+        end_idx = min(freq_idx + self.thickness // 2 + 1, spectro_shape[0])
+        mask[start_idx:end_idx, :] += self.strength_dB
+        return mask
+
+
+class VerticalLineDBShape(BaseShape):
+    def __init__(self, center_time, strength_dB, thickness=2):
+        super().__init__()
+        self.center_time = center_time
+        self.strength_dB = strength_dB
+        self.thickness = thickness
+
+    def generate_shape_mask(self, spectro_shape, spectro_mod):
+        mask = np.zeros(spectro_shape)
+        times = spectro_mod._get_times()
+        time_idx = np.argmin(np.abs(times - self.center_time))
+        start_idx = max(time_idx - self.thickness // 2, 0)
+        end_idx = min(time_idx + self.thickness // 2 + 1, spectro_shape[1])
+        mask[:, start_idx:end_idx] += self.strength_dB
+        return mask
+# noise_pipeline/reconstruction.py
+
+import librosa
+import numpy as np
+
+
+def reconstruct_with_griffinlim(
+        spectrogram_db, 
+        hop_length,
+        n_iter=32, 
+        window='hann'
+    ):
+    amplitude = librosa.db_to_amplitude(spectrogram_db, ref=1.0)
+    new_audio = librosa.griffinlim(
+        amplitude,
+        n_iter=n_iter,
+        hop_length=hop_length,
+        window=window
+    )
+    return new_audio
+
+
+def reconstruct_audio_from_final_spectrogram(
+        spectro_mod, 
+    ):
+    stft_orig = librosa.stft(
+        spectro_mod.signal_with_noise,
+        n_fft=spectro_mod.n_fft,
+        hop_length=spectro_mod.hop_length,
+        window=spectro_mod.window
+    )
+    phase = np.angle(stft_orig)
+    magnitude = librosa.db_to_amplitude(spectro_mod.S_db, ref=1.0)
+    new_stft = magnitude * np.exp(1j * phase)
+
+    new_audio = librosa.istft(
+        new_stft,
+        hop_length=spectro_mod.hop_length,
+        window=spectro_mod.window
+    )
+    return new_audio
+# noise_pipeline/factories.py
+
+from .shapes import (
+    CircleDBShape,
+    TrapezoidDBShape,
+    RectangleDBShape,
+    EllipseDBShape,
+    FogDBShape,
+    PolygonDBShape,
+    WavePatternDBShape,
+    RealWorldNoiseDBShape,
+    HorizontalSpikeDBShape,
+    VerticalSpikeDBShape,
+    HillDBShape,
+    PillarDBShape,
+    HorizontalLineDBShape,
+    VerticalLineDBShape,
+    HorizontalRangeDistributionDBShape,
+    VerticalRangeDistributionDBShape
+)
+from .patterns import (
+    LinearPattern,
+    RandomPattern,
+    NLinearRepeatTSleepPattern,
+    ConvexPattern,
+    FunctionPattern
+)
+
+
+class ShapeFactory:
+    def create(self, shape_name, **kwargs):
+        shape_name = shape_name.lower()
+        if shape_name == "circle":
+            return CircleDBShape(
+                center_freq=kwargs['center_freq'],
+                center_time=kwargs['center_time'],
+                radius_freq=kwargs['radius_freq'],
+                radius_time=kwargs['radius_time'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "trapezoid":
+            return TrapezoidDBShape(
+                freq_min=kwargs['freq_min'],
+                freq_max=kwargs['freq_max'],
+                time_min=kwargs['time_min'],
+                time_max=kwargs['time_max'],
+                slope_freq=kwargs['slope_freq'],
+                slope_time=kwargs['slope_time'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "rectangle":
+            return RectangleDBShape(
+                freq_min=kwargs['freq_min'],
+                freq_max=kwargs['freq_max'],
+                time_min=kwargs['time_min'],
+                time_max=kwargs['time_max'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "ellipse":
+            return EllipseDBShape(
+                center_freq=kwargs['center_freq'],
+                center_time=kwargs['center_time'],
+                radius_freq=kwargs['radius_freq'],
+                radius_time=kwargs['radius_time'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "fog":
+            return FogDBShape(
+                strength_dB=kwargs['strength_dB'],
+                coverage=kwargs.get('coverage', 1.0)
+            )
+        elif shape_name == "polygon":
+            return PolygonDBShape(
+                vertices=kwargs['vertices'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "wave_pattern":
+            return WavePatternDBShape(
+                axis=kwargs.get('axis', 'time'),
+                frequency=kwargs['frequency'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "real_world_noise":
+            return RealWorldNoiseDBShape(
+                audio_path=kwargs['audio_path'],
+                freq_min=kwargs['freq_min'],
+                freq_max=kwargs['freq_max'],
+                time_min=kwargs['time_min'],
+                time_max=kwargs['time_max'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "horizontal_spike":
+            return HorizontalSpikeDBShape(
+                center_freq=kwargs['center_freq'],
+                center_time=kwargs['center_time'],
+                radius_freq=kwargs['radius_freq'],
+                radius_time=kwargs['radius_time'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "vertical_spike":
+            return VerticalSpikeDBShape(
+                center_freq=kwargs['center_freq'],
+                center_time=kwargs['center_time'],
+                radius_freq=kwargs['radius_freq'],
+                radius_time=kwargs['radius_time'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "hill":
+            return HillDBShape(
+                freq_center=kwargs['freq_center'],
+                time_center=kwargs['time_center'],
+                freq_width=kwargs['freq_width'],
+                time_width=kwargs['time_width'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "pillar":
+            return PillarDBShape(
+                freq_min=kwargs['freq_min'],
+                freq_max=kwargs['freq_max'],
+                strength_dB=kwargs['strength_dB']
+            )
+        elif shape_name == "horizontal_line":
+            return HorizontalLineDBShape(
+                center_freq=kwargs['center_freq'],
+                strength_dB=kwargs['strength_dB'],
+                thickness=kwargs.get('thickness', 1)
+            )
+        elif shape_name == "vertical_line":
+            return VerticalLineDBShape(
+                center_time=kwargs['center_time'],
+                strength_dB=kwargs['strength_dB'],
+                thickness=kwargs.get('thickness', 1)
+            )
+        elif shape_name == "horizontal_range_dist_db":
+            return HorizontalRangeDistributionDBShape(
+                freq_min=kwargs['freq_min'],
+                freq_max=kwargs['freq_max'],
+                strength_dB=kwargs['strength_dB'],
+                distribution=kwargs.get('distribution', 'gaussian'),
+                distribution_params=kwargs.get('distribution_params', {})
+            )
+        elif shape_name == "vertical_range_dist_db":
+            return VerticalRangeDistributionDBShape(
+                time_min=kwargs['time_min'],
+                time_max=kwargs['time_max'],
+                strength_dB=kwargs['strength_dB'],
+                distribution=kwargs.get('distribution', 'gaussian'),
+                distribution_params=kwargs.get('distribution_params', {})
+            )
+        else:
+            raise ValueError(f"Unknown shape name: {shape_name}")
+
+
+class PatternFactory:
+    def create(self, pattern_name, params):
+        pattern_name = pattern_name.lower()
+        if pattern_name == "linear":
+            return LinearPattern(
+                shape_name=params['shape_name'],
+                shape_params=params['shape_params'],
+                direction=params.get('direction', 'time'),
+                repeat=params.get('repeat', 5),
+                spacing=params.get('spacing', 1.0)
+            )
+        elif pattern_name == "random":
+            return RandomPattern(
+                shape_name=params['shape_name'],
+                shape_params=params['shape_params'],
+                n=params.get('n', 10),
+                freq_range=params.get('freq_range', (0, 16000)),
+                time_range=params.get('time_range', (0.0, 12.0))
+            )
+        elif pattern_name == "n_linear_repeat_t_sleep":
+            direction = params.get('direction', 'time')
+            if direction == 'freq':
+                repeat_hz = params.get('repeat_time', 0.5) * 1000
+            else:
+                repeat_hz = None
+
+            return NLinearRepeatTSleepPattern(
+                shape_name=params['shape_name'],
+                shape_params=params['shape_params'],
+                repeat=params.get('repeat', 3),
+                repeat_time=params.get('repeat_time', 0.5),
+                repeat_hz=repeat_hz,
+                sleep_time=params.get('sleep_time', 5.0),
+                start_time=params.get('start_time', 0.0),
+                direction=direction
+            )
+        elif pattern_name == "convex":
+            return ConvexPattern(
+                shape_name=params['shape_name'],
+                shape_params=params['shape_params'],
+                freq_min=params['freq_min'],
+                freq_max=params['freq_max'],
+                time_min=params['time_min'],
+                time_max=params['time_max'],
+                n=params.get('n', 10)
+            )
+        elif pattern_name == "function":
+            return FunctionPattern(params['func'])
+        else:
+            return None
+# noise_pipeline/__init__.py
+
+from .spectrogram_modifier import SpectrogramModifier
+from .shapes import (
+    DBShape,
+    BaseShape,
+    CircleDBShape,
+    TrapezoidDBShape,
+    SpikeDBShape,
+    PillarDBShape,
+    RectangleDBShape,
+    EllipseDBShape,
+    HorizontalSpikeDBShape,
+    VerticalSpikeDBShape,
+    HorizontalRangeDistributionDBShape,
+    VerticalRangeDistributionDBShape,
+    HillDBShape,
+    FogDBShape,
+    PolygonDBShape,
+    HorizontalLineDBShape,
+    VerticalLineDBShape
+)
+from .patterns import (
+    Pattern,
+    LinearPattern,
+    RandomPattern,
+    NLinearRepeatTSleepPattern,
+    ConvexPattern,
+    FunctionPattern
+)
+from .factories import ShapeFactory, PatternFactory
+from .noise_pipeline import NoisePipeline
+from .utils import calculate_complexity_level, pick_item_from_ratio, generate_shape_params, create_random_noise_pipeline
+from .reconstruction import (
+    reconstruct_with_griffinlim,
+    reconstruct_audio_from_final_spectrogram
+)
+
+__all__ = [
+    "SpectrogramModifier",
+    "DBShape",
+    "BaseShape",
+    "CircleDBShape",
+    "TrapezoidDBShape",
+    "SpikeDBShape",
+    "PillarDBShape",
+    "RectangleDBShape",
+    "EllipseDBShape",
+    "HorizontalSpikeDBShape",
+    "VerticalSpikeDBShape",
+    "HorizontalRangeDistributionDBShape",
+    "VerticalRangeDistributionDBShape",
+    "HillDBShape",
+    "FogDBShape",
+    "PolygonDBShape",
+    "HorizontalLineDBShape",
+    "VerticalLineDBShape",
+    "Pattern",
+    "LinearPattern",
+    "RandomPattern",
+    "NLinearRepeatTSleepPattern",
+    "ConvexPattern",
+    "FunctionPattern",
+    "ShapeFactory",
+    "PatternFactory",
+    "NoisePipeline",
+    "calculate_complexity_level",
+    "pick_item_from_ratio",
+    "generate_shape_params",
+    "create_random_noise_pipeline",
+    "reconstruct_with_griffinlim",
+    "reconstruct_audio_from_final_spectrogram"
+]
