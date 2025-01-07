@@ -9,6 +9,7 @@ eval_2024/
 output/
 outputs/
 processed*/
+temp*/
 
 # Ignore model and output directories
 meta-llama-ocrvqa/
