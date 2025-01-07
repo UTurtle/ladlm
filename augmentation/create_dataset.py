@@ -1,9 +1,12 @@
 # create_full_dataset.py
 
 import os
+import sys
 import json
+import shutil      
 import pandas as pd
 from datasets import Dataset, Features, Value, Audio, Image
+
 
 def round_floats(obj, precision=3):
     """
@@ -141,13 +144,55 @@ def save_dataset_as_arrow(dataset, output_dataset_dir):
     dataset.save_to_disk(output_dataset_dir)
     print(f"Dataset saved to {output_dataset_dir}")
 
+def confirm_and_remove_dir(dir_path):
+    """
+    Checks if a directory exists and is not empty. If so, prompts the user to confirm deletion.
+    
+    Parameters:
+    - dir_path (str): Path to the directory.
+    
+    Returns:
+    - bool: True if the directory was deleted or doesn't exist, False otherwise.
+    """
+    if os.path.exists(dir_path) and os.path.isdir(dir_path):
+        # Check if directory is not empty
+        if os.listdir(dir_path):
+            while True:
+                user_input = input(f"The directory '{dir_path}' already exists and is not empty. Do you want to delete its contents and recreate it? (y/n): ").strip().lower()
+                if user_input == 'y':
+                    try:
+                        shutil.rmtree(dir_path)
+                        os.makedirs(dir_path, exist_ok=True)
+                        print(f"Deleted and recreated directory: {dir_path}")
+                        return True
+                    except Exception as e:
+                        print(f"Error deleting directory '{dir_path}': {e}")
+                        return False
+                elif user_input == 'n':
+                    print(f"Operation cancelled by the user. Exiting.")
+                    return False
+                else:
+                    print("Please enter 'y' or 'n'.")
+    else:
+        # Directory does not exist; create it
+        os.makedirs(dir_path, exist_ok=True)
+        print(f"Created directory: {dir_path}")
+    return True
+
 def main():
     # 직접 변수에 값 할당
     output_json_dir = "output/json"
     processed_json_dir = "processed_json"
-    output_dataset_dir = "dataset"
+    output_dataset_dir = "datasets"
     hf_dataset_dir = "datasets/ladlm_function_based_dataset"
-    complexity_level = 5  # 필요에 따라 변경
+
+    # List of directories to check
+    directories = [output_json_dir, processed_json_dir, output_dataset_dir, hf_dataset_dir]
+    
+    # Check each directory
+    for dir_path in directories:
+        if not confirm_and_remove_dir(dir_path):
+            sys.exit(1)  # Exit the script if the user chooses not to delete
 
     process_json_files(output_json_dir, processed_json_dir)
     create_dataset(processed_json_dir, output_dataset_dir)

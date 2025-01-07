@@ -1,6 +1,7 @@
 # main.py
 
 import os
+import sys
 import random
 import json
 import numpy as np
@@ -10,6 +11,9 @@ import logging
 from tqdm import tqdm
 import librosa
 import librosa.display
+
+# for import noise_pipeline
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from noise_pipeline.constants import (
     RATIO_SHAPE_BASE,
@@ -67,13 +71,11 @@ def setup_logging(disable_logging=False):
 
 
 def batch_level_main(
+    max_level=5,
     total_files=1000,
     output_base_dir="output",
     sr=16000,
-    duration=12.0,
-    img_width=1280,
-    img_height=720,
-    img_dpi=100,
+    duration=3.0,
     n_fft=256,
     hop_length=256,
     window='hann'
@@ -121,11 +123,11 @@ def batch_level_main(
     pattern_factory = PatternFactory()
 
     # Calculate the number of files per level
-    files_per_level = total_files // 5
-    remaining_files = total_files % 5
-    level_counts = {level: files_per_level for level in range(1, 6)}
+    files_per_level = total_files // max_level
+    remaining_files = total_files % max_level
+    level_counts = {level: files_per_level for level in range(1, max_level+1)}
     # Distribute remaining files
-    for level in range(1, 6):
+    for level in range(1, max_level+1):
         if remaining_files > 0:
             level_counts[level] += 1
             remaining_files -= 1
@@ -343,16 +345,12 @@ def batch_level_main(
 
 
 def main():
-    total_files = 100  
+    max_level = 3
+    total_files = 10000
     output_dir = "output"
     sr = 16000
-    duration = 12.0
+    duration = 3.0
     disable_logging = False  
-
-    # 이미지 해상도 파라미터
-    img_width = 1200
-    img_height = 700
-    img_dpi = 100
 
     # librosa 파라미터
     n_fft = 256
@@ -364,13 +362,11 @@ def main():
 
     # batch_level_main 함수 호출
     batch_level_main(
+        max_level=max_level,
         total_files=total_files,
         output_base_dir=output_dir,
         sr=sr,
         duration=duration,
-        img_width=img_width,
-        img_height=img_height,
-        img_dpi=img_dpi,
         n_fft=n_fft,
         hop_length=hop_length,
         window=window

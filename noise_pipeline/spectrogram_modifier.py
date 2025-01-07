@@ -108,7 +108,7 @@ class SpectrogramModifier:
     def plot_spectrogram(self, show_labels=True, colormap='magma', title='Spectrogram'):
         if self.S_db is None:
             raise ValueError("compute_spectrogram() must be called first.")
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=(8, 8))
         img = librosa.display.specshow(
             self.S_db,
             sr=self.sample_rate,
