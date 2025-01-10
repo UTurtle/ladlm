@@ -1,12 +1,9 @@
-# create_full_dataset.py
-
 import os
-import sys
 import json
-import shutil      
 import pandas as pd
 from datasets import Dataset, Features, Value, Audio, Image
-
+import shutil  # Import shutil for directory operations
+import sys     # Import sys to allow exiting the script
 
 def round_floats(obj, precision=3):
     """
@@ -32,41 +29,45 @@ def process_json_files(output_json_dir, processed_json_dir):
     """
     os.makedirs(processed_json_dir, exist_ok=True)
     
-    for filename in os.listdir(output_json_dir):
-        if filename.endswith('.json'):
-            input_path = os.path.join(output_json_dir, filename)
-            output_path = os.path.join(processed_json_dir, filename)
-            
-            with open(input_path, 'r') as f:
-                data = json.load(f)
-            
-            # 파일 이름 형식 변경 (중복 레벨 제거)
-            for key in ['file_path', 'file_name', 'spectrogram_with_axes', 'spectrogram_no_axes']:
-                original_value = data.get(key, "")
-                parts = original_value.split('_level_')
-                if len(parts) > 2:
-                    # 첫 번째 '_level_' 이후 중복 제거
-                    new_value = '_level_'.join([parts[0], parts[1]] + parts[2:])
-                    # 중복된 'level_{level}' 제거
-                    new_value = new_value.replace(f'_level_{data["complexity_level"]}_level_{data["complexity_level"]}', f'_level_{data["complexity_level"]}')
-                    data[key] = new_value
-            
-            # 소수점 반올림
-            data = round_floats(data, precision=3)
-            
-            # 'function_based_explanation_spectrogram' 필드를 문자열로 변환
-            function_based_explanation = {
-                "spectrogram_base": data.pop("spectrogram_base"),
-                "shapes": data.pop("shapes"),
-                "patterns": data.pop("patterns")
-            }
-            # JSON 문자열로 변환하면서 공백 제거
-            function_based_explanation_str = json.dumps(function_based_explanation, separators=(',', ':'))
-            data['function_based_explanation_spectrogram'] = function_based_explanation_str
-            
-            # JSON 파일 저장
-            with open(output_path, 'w') as f:
-                json.dump(data, f, separators=(',', ':'), ensure_ascii=False)
+    json_files = [f for f in os.listdir(output_json_dir) if f.endswith('.json')]
+    if not json_files:
+        print(f"No JSON files found in '{output_json_dir}'. Please ensure the directory contains JSON files.")
+        sys.exit(1)
+    
+    for filename in json_files:
+        input_path = os.path.join(output_json_dir, filename)
+        output_path = os.path.join(processed_json_dir, filename)
+        
+        with open(input_path, 'r') as f:
+            data = json.load(f)
+        
+        # 파일 이름 형식 변경 (중복 레벨 제거)
+        for key in ['file_path', 'file_name', 'spectrogram_with_axes', 'spectrogram_no_axes']:
+            original_value = data.get(key, "")
+            parts = original_value.split('_level_')
+            if len(parts) > 2:
+                # 첫 번째 '_level_' 이후 중복 제거
+                new_value = '_level_'.join([parts[0], parts[1]] + parts[2:])
+                # 중복된 'level_{level}' 제거
+                new_value = new_value.replace(f'_level_{data["complexity_level"]}_level_{data["complexity_level"]}', f'_level_{data["complexity_level"]}')
+                data[key] = new_value
+        
+        # 소수점 반올림
+        data = round_floats(data, precision=3)
+        
+        # 'function_based_explanation_spectrogram' 필드를 문자열로 변환
+        function_based_explanation = {
+            "spectrogram_base": data.pop("spectrogram_base"),
+            "shapes": data.pop("shapes"),
+            "patterns": data.pop("patterns")
+        }
+        # JSON 문자열로 변환하면서 공백 제거
+        function_based_explanation_str = json.dumps(function_based_explanation, separators=(',', ':'))
+        data['function_based_explanation_spectrogram'] = function_based_explanation_str
+        
+        # JSON 파일 저장
+        with open(output_path, 'w') as f:
+            json.dump(data, f, separators=(',', ':'), ensure_ascii=False)
     
     print(f"Processed JSON files are saved in: {processed_json_dir}")
 
@@ -89,6 +90,10 @@ def create_dataset(processed_json_dir, output_dataset_dir):
                 data = json.load(f)
                 dataset.append(data)
     
+    if not dataset:
+        print(f"No data found in '{processed_json_dir}'. The dataset will be empty.")
+        sys.exit(1)
+    
     # DataFrame으로 변환
     df = pd.DataFrame(dataset)
     
@@ -110,6 +115,10 @@ def load_dataset_from_json(dataset_json_path):
     """
     # pandas를 사용하여 데이터 로드
     df = pd.read_json(dataset_json_path, lines=True)
+    
+    if df.empty:
+        print(f"The dataset at '{dataset_json_path}' is empty. Exiting.")
+        sys.exit(1)
     
     # 'file_path' 컬럼을 'audio'로 이름 변경
     df = df.rename(columns={'file_path': 'audio'})
@@ -180,23 +189,46 @@ def confirm_and_remove_dir(dir_path):
     return True
 
 def main():
-    # 직접 변수에 값 할당
+    # Directories
     output_json_dir = "output/json"
     processed_json_dir = "processed_json"
-    output_dataset_dir = "datasets"
-    hf_dataset_dir = "datasets/ladlm_function_based_dataset"
+    output_dataset_dir = "dataset"
+    # Initially, we don't define hf_dataset_dir here since it depends on dataset size
+    
+    # Check if output_json_dir exists and contains JSON files
+    if not os.path.exists(output_json_dir):
+        print(f"The source directory '{output_json_dir}' does not exist. Please ensure it contains the JSON files to process.")
+        sys.exit(1)
+    
+    if not any(f.endswith('.json') for f in os.listdir(output_json_dir)):
+        print(f"The source directory '{output_json_dir}' does not contain any JSON files. Please add JSON files before running the script.")
+        sys.exit(1)
 
-    # List of directories to check
-    directories = [output_json_dir, processed_json_dir, output_dataset_dir, hf_dataset_dir]
+    # List of directories to check (excluding output_json_dir)
+    directories = [processed_json_dir, output_dataset_dir]
     
     # Check each directory
     for dir_path in directories:
         if not confirm_and_remove_dir(dir_path):
             sys.exit(1)  # Exit the script if the user chooses not to delete
-
+    
+    # Proceed with processing
     process_json_files(output_json_dir, processed_json_dir)
     create_dataset(processed_json_dir, output_dataset_dir)
-    dataset = load_dataset_from_json(os.path.join(output_dataset_dir, 'dataset.json'))
+    
+    # Load the dataset to determine its size
+    dataset_json_path = os.path.join(output_dataset_dir, 'dataset.json')
+    dataset = load_dataset_from_json(dataset_json_path)
+    dataset_size = len(dataset)
+    
+    # Define hf_dataset_dir with dataset size
+    hf_dataset_dir = f"datasets/function_based_{dataset_size}"
+    
+    # Check and handle hf_dataset_dir
+    if not confirm_and_remove_dir(hf_dataset_dir):
+        sys.exit(1)
+    
+    # Save the dataset in Arrow format with the new directory name
     save_dataset_as_arrow(dataset, hf_dataset_dir)
 
 if __name__ == "__main__":

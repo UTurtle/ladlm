@@ -30,7 +30,9 @@ from .patterns import (
 )
 from .factories import ShapeFactory, PatternFactory
 from .noise_pipeline import NoisePipeline
-from .utils import calculate_complexity_level, pick_item_from_ratio, generate_shape_params, create_random_noise_pipeline
+from .shape_params import generate_shape_params
+from .random_noise_pipeline import create_random_noise_pipeline
+from .utils import calculate_complexity_level, pick_item_from_ratio, clamp
 from .reconstruction import (
     reconstruct_with_griffinlim,
     reconstruct_audio_from_final_spectrogram
@@ -74,6 +76,7 @@ __all__ = [
     "NoisePipeline",
     "calculate_complexity_level",
     "pick_item_from_ratio",
+    "clamp",
     "generate_shape_params",
     "create_random_noise_pipeline",
     "reconstruct_with_griffinlim",

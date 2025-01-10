@@ -10,6 +10,9 @@ output/
 outputs/
 processed*/
 temp*/
+resconstructed_output/
+reconstructed_output/
+logs/
 
 # Ignore model and output directories
 meta-llama-ocrvqa/
