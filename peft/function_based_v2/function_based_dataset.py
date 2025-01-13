@@ -7,9 +7,6 @@ from torch.utils.data import DataLoader
 import numpy as np
 import os
 
-# Assuming you have a processor compatible with Llama 3.2 Vision
-# Replace `YourProcessor` with the actual processor class you're using
-
 # Helper Functions
 def check_header(targets, seq):
     """

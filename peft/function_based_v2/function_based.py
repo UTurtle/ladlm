@@ -32,7 +32,7 @@ train_config.batching_strategy = "packing"
 train_config.output_dir = "function_based_v2"
 train_config.use_peft = True
 
-dataset_path = '../../datasets/function_based_10000'
+dataset_path = '/home/uturtle/repos/ladlm/datasets/function_based_10000'
 
 # Quantization Configuration
 bnb_config = BitsAndBytesConfig(
