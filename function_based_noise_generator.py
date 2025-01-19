@@ -151,15 +151,14 @@ def generate_spectrogram(pipeline, sr, duration):
         np.random.normal(-40, 1, int(sr * duration))
     )
 
-
 def save_spectrogram(spectro_mod, show_labels, title, save_path):
     fig, _ = spectro_mod.plot_spectrogram(
         show_labels=show_labels, title=title
     )
     if not show_labels:
-        fig.savefig(save_path, bbox_inches='tight', pad_inches=0)
+        fig.savefig(save_path, bbox_inches='tight', pad_inches=0, dpi=100)
     else:
-        fig.savefig(save_path)
+        fig.savefig(save_path, dpi=100)
     plt.close(fig)
 
 
@@ -341,7 +340,7 @@ def batch_level_main(max_level=5, total_files=1000,
                     spectro_mod,
                     show_labels=True,
                     title=f'Final Spectrogram Level {actual_level}',
-                    save_path=spectrogram_with_axes_path
+                    save_path=spectrogram_with_axes_path,
                 )
                 logger.debug(
                     f"Saved spectrogram with axes for file_id {file_id}."
@@ -357,7 +356,7 @@ def batch_level_main(max_level=5, total_files=1000,
                     spectro_mod,
                     show_labels=False,
                     title=f'Final Spectrogram Level {actual_level}',
-                    save_path=spectrogram_no_axes_path
+                    save_path=spectrogram_no_axes_path,
                 )
                 logger.debug(
                     f"Saved spectrogram without axes for file_id {file_id}."
@@ -428,14 +427,14 @@ def handle_existing_output_dir(output_dir):
 def main():
     disable_logging = True
 
-    max_level = 1
-    total_files = 1000
+    max_level = 3
+    total_files = 48000
     output_dir = "augmentation/output"
 
     sr = 16000
     duration = 3.0
-    n_fft = 256
-    hop_length = 256
+    n_fft = 1024
+    hop_length = 512
     window = 'hann'
 
     setup_logging(disable_logging=disable_logging)
@@ -448,7 +447,7 @@ def main():
         duration=duration,
         n_fft=n_fft,
         hop_length=hop_length,
-        window=window
+        window=window,
     )
 
 

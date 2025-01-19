@@ -21,8 +21,8 @@ RATIO_SHAPE_BASE = {
     "ellipse": 1,
     "horizontal_spike": 1,
     "vertical_spike": 1,
-    "fog": 1,
-    "pillar": 1,
+    "fog": 0,
+    "pillar": 0,
     "horizontal_line": 1,
     "vertical_line": 1,
     "horizontal_range_dist_db": 1,
@@ -30,14 +30,14 @@ RATIO_SHAPE_BASE = {
     "trapezoid": 1,
     "hill": 1,
     "wave_pattern": 1,
-    "polygon": 1
+    "polygon": 0
 }
 
 RATIO_PATTERN_BASE = {
     "linear": 1,
     "random": 1,
     "n_linear_repeat_t_sleep": 1,
-    "convex": 1
+    "convex": 0
 }
 
 # 클래스 이름과 JSON에 저장할 소문자 타입 이름 간의 매핑 테이블

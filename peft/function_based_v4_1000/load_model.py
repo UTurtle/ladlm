@@ -39,8 +39,6 @@ def main():
         dataset_path=DATASET_PATH
     )
 
-    model = prepare_peft_model(model, lora_config)
-
     try:
         model = PeftModel.from_pretrained(model, train_config.output_dir)
         print("Model loaded successfully from:", train_config.output_dir)

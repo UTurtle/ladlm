@@ -54,6 +54,10 @@ def main():
 
     if "<|start_header_id|>assistant<|end_header_id|>" in generated_text:
         generated_text = generated_text.split("<|start_header_id|>assistant<|end_header_id|>")[-1].strip()
+
+    if "<|eot_id|>" in generated_text:
+        generated_text = generated_text.replace("<|eot_id|>", "").strip()
+
     print(f"Recreated: {generated_text}")
 
     file_name = sample['file_name']

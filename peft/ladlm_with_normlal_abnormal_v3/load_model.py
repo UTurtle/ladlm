@@ -33,38 +33,25 @@ def main():
     lora_config = load_lora_config()
     bnb_config = load_bnb_config()
 
-    model, processor = load_model(train_config, bnb_config)
+    base_model, processor = load_model(train_config, bnb_config)
     train_dataset, eval_dataset = load_datasets(
         processor=processor,
         dataset_path=DATASET_PATH
     )
 
-    try:
-        model = PeftModel.from_pretrained(model, train_config.output_dir)
-        print("Model loaded successfully from:", train_config.output_dir)
-    except Exception as e:
-        print(f"Failed to load the trained PEFT model: {e}")
-        return
+    lora_model = PeftModel.from_pretrained(base_model, train_config.output_dir)
+    print("Model loaded successfully from:", train_config.output_dir)
 
-    print(model)
 
     sample = eval_dataset[0]
-
-    generated_text = inference_vllm(model, processor, sample)
+    
+    generated_text = inference_vllm(base_model, processor, sample)
 
     if "<|start_header_id|>assistant<|end_header_id|>" in generated_text:
         generated_text = generated_text.split("<|start_header_id|>assistant<|end_header_id|>")[-1].strip()
     print(f"Recreated: {generated_text}")
 
-    file_name = sample['file_name']
-    complexity_level = sample['complexity_level']
-    spectrogram_image = sample['spectrogram_with_axes'].convert("RGB")
-
-    # Save plot as image
-    img_path = f"temp_image/temp_image.png"
-    plt.imshow(spectrogram_image)
-    plt.axis('off')
-    plt.savefig(img_path, bbox_inches='tight', pad_inches=0)
+    create_excel(train_config, eval_dataset, processor, base_model)
 
 if __name__ == "__main__":
     main()
